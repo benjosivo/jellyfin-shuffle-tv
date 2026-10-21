@@ -84,7 +84,9 @@ async function announce(): Promise<void> {
   log.info(`Interface : http://localhost:${serverConfig.port}/`);
   for (const url of urls) log.info(`Depuis le téléphone : ${url}`);
   if (urls[0]) {
-    const qr = await QRCode.toString(urls[0], { type: "terminal", small: true });
+    // Caractères pleins sans codes couleur ANSI (journald les stockerait en « blob data »),
+    // inversés pour un terminal sombre : les blocs dessinés sont les modules clairs.
+    const qr = await QRCode.toString(urls[0], { type: "utf8", margin: 2, color: { dark: "#ffffff", light: "#000000" } });
     console.log(`\nScanner pour ouvrir ${urls[0]} :\n${qr}`);
   } else {
     log.warn("Aucune adresse réseau local trouvée : le téléphone ne pourra pas joindre l'interface.");

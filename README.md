@@ -1,0 +1,204 @@
+# Jellyfin en boucle
+
+Lecture aléatoire et continue d'une série Jellyfin sur **Jellyfin MPV Shim**, pilotable depuis le téléphone.
+Remplace le script `the-office-random.fish` (et `auth.py`).
+
+- Enchaîne les épisodes au hasard (sans revoir les mêmes avant d'avoir fait le tour de la série) et coupe 30 s avant la fin pour bloquer l'autoplay de Jellyfin.
+- Interface web mobile : épisode en cours, pause / reprise / passer / stop, barre de progression (seek), volume, mute, piste audio, sous-titres, file des prochains épisodes (retirer, monter, lire maintenant, nouveau tirage), historique avec l'heure, choix de la série, mode auto.
+- **QR code** pour ouvrir l'interface sur le téléphone : affiché en grand à l'ouverture de la page sur le PC, à chaque ouverture de session, et dans le journal du service.
+- **Assistant de configuration** pour un PC neuf : découverte du serveur Jellyfin sur le réseau, connexion, détection de MPV Shim, choix de la série.
+- Linux (service systemd utilisateur) et Windows (tâche planifiée au login).
+
+Un seul process Node (port **8787**). Le token Jellyfin reste sur le PC : le téléphone ne parle qu'à l'application, jamais à Jellyfin.
+
+## Installation
+
+Prérequis : Node.js ≥ 20 et Git (les scripts proposent d'installer Node.js s'il manque).
+
+### Linux
+
+```bash
+git clone https://github.com/benjosivo/jellyfin-shuffle-tv.git ~/jellyfin-shuffle-tv
+cd ~/jellyfin-shuffle-tv
+deploy/linux/install.sh
+```
+
+Le script (à lancer sans `sudo`, il le demande au besoin) :
+
+1. vérifie Node.js ;
+2. installe **Jellyfin MPV Shim** s'il manque (AUR via `paru`/`yay` sur Arch/CachyOS, sinon Flatpak, sinon `pipx`) et le lance à l'ouverture de session ;
+3. installe les dépendances et compile (`npm ci && npm run build`) ;
+4. installe et démarre le service `~/.config/systemd/user/jellyfin-office.service` (`Restart=on-failure`) ;
+5. propose d'ouvrir le port 8787 si `ufw` ou `firewalld` est actif ;
+6. ajoute l'ouverture de la page QR code au login (`~/.config/autostart/jellyfin-en-boucle.desktop`) ;
+7. signale tout lancement automatique de l'ancien script fish **sans rien supprimer** : à désactiver soi-même, sinon les deux pilotent MPV Shim en même temps.
+
+Options : `--yes`, `--no-mpv-shim`, `--no-open-ui`. Port différent : `PORT=8080 deploy/linux/install.sh`.
+
+### Windows
+
+Dans PowerShell, depuis le dossier du projet :
+
+```powershell
+powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1
+```
+
+Le script demande les droits administrateur (pare-feu, tâche planifiée) ; utiliser un compte qui est lui-même administrateur, pour que la tâche soit créée pour le bon utilisateur. Il :
+
+1. installe Node.js LTS avec `winget` s'il manque ;
+2. télécharge et lance l'installeur de **Jellyfin MPV Shim** (dernière version sur GitHub) s'il manque, et l'ajoute au dossier Démarrage ;
+3. compile l'application ;
+4. crée la tâche planifiée « Jellyfin en boucle » (au login, sans fenêtre, relance automatique en cas de plantage) ;
+5. ouvre le port 8787 sur les réseaux privés, et propose de passer le réseau de la maison en « privé » s'il est en « public » ;
+6. ajoute l'ouverture de la page QR code au login (raccourci dans le dossier Démarrage).
+
+Journal : `%APPDATA%\jellyfin-office\service.log`.
+
+### Première utilisation
+
+Ouvrir `http://localhost:8787` sur le PC (ou scanner le QR code) :
+
+- **PC neuf** : l'assistant demande le serveur (trouvé automatiquement s'il est sur le même réseau), le compte Jellyfin, puis guide la connexion de MPV Shim (lancer MPV Shim, y ajouter le même serveur et le même utilisateur) et le choix de la série.
+- **PC qui utilisait déjà le script fish** : rien à refaire. Le token créé par `auth.py` est repris tel quel (serveur `192.168.1.122:8096`, utilisateur `En Boucle`), et l'ancien fichier `history` est importé dans l'historique de *The Office* au premier lancement.
+
+## À faire en premier sur la machine actuelle : le spike
+
+Les commandes à distance (volume, pistes, seek…) n'ont pas pu être testées sur le vrai MPV Shim pendant le développement. Avant de faire confiance à l'interface :
+
+```bash
+npm ci
+npm run spike            # liste les sessions Jellyfin et indique celle qui sera pilotée, et pourquoi
+npm run spike -- --test  # avec un épisode en cours : teste pas à pas SetVolume, Mute, pistes audio,
+                         # sous-titres, Seek, Pause, en relisant l'état renvoyé par Jellyfin
+```
+
+Le rapport est écrit dans `~/.config/jellyfin-office/spike-report.json`. Si MPV Shim n'est pas reconnu, ou si une commande est refusée ou sans effet, c'est ce fichier qu'il faut transmettre.
+
+L'interface grise d'elle-même les réglages que le lecteur ne déclare pas (`Capabilities.SupportedCommands`).
+
+## Utilisation
+
+- **Mode auto** (réglages) : enchaînement automatique. Désactivé, l'application ne fait plus rien d'elle-même ; les boutons restent utilisables.
+- **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard).
+- **Passer** et **Lire maintenant** reprennent toujours la main, même si autre chose a été lancé à la main.
+- Un contenu lancé manuellement sur MPV Shim (depuis l'appli Jellyfin, par exemple) n'est pas interrompu : la boucle reprend quand sa lecture s'arrête.
+- Un épisode passé compte quand même comme vu.
+- Changer de série conserve l'historique et la file de chaque série.
+
+## Fonctionnement
+
+À chaque relevé (toutes les 3 s), l'application lit `GET /Sessions`, repère MPV Shim, puis :
+
+| Situation | Action |
+|---|---|
+| Rien en lecture depuis 6 s | lance la tête de file |
+| En pause | rien |
+| Contenu lancé à la main | rien, jusqu'à l'arrêt |
+| Durée inconnue (`RunTimeTicks` absent ou 0) | rien |
+| Moins de 30 s restantes sur un épisode lancé par l'application | `Stop` puis, 2 s après, `PlayNow` de la tête de file |
+| Moins de 8 s depuis le dernier changement | rien (la session renvoie encore l'ancien épisode) |
+
+**File et historique**, par série : la file contient 5 épisodes tirés hors historique ; l'historique garde 95 % des épisodes de la série (borné pour qu'il reste toujours de quoi tirer, quelle que soit la taille de la série).
+
+### Corrections par rapport au script fish
+
+- La session pilotée était repérée par `Client == "CachyOS Office Auto"`, qui est le client de `auth.py`, donc la session du token elle-même. Elle est maintenant repérée par : contrôle à distance possible, même utilisateur, `DeviceId` différent de celui de l'application, et `Client`/`DeviceName` contenant « mpv ».
+- Le `Stop` de la boucle partait sans token (`$TOKEN` vide hors des fonctions fish) : il est authentifié.
+- `HISTORY_LIMIT = 190` était calibré pour *The Office* : la taille de l'historique dépend maintenant de la série.
+
+## Configuration
+
+Fichiers dans `~/.config/jellyfin-office/` (Windows : `%APPDATA%\jellyfin-office\`) :
+
+| Fichier | Contenu |
+|---|---|
+| `config.json` | serveur, utilisateur, identité de ce PC dans Jellyfin (écrit par l'assistant) |
+| `token`, `user_id` | connexion Jellyfin (droits 600) ; le mot de passe n'est jamais enregistré |
+| `state.json` | série courante, réglages, file et historique de chaque série, dernier épisode lancé |
+| `office.log` | journal (comme avant) |
+| `history` | ancien historique du script fish, importé une fois puis ignoré |
+
+Chaque PC reçoit son propre `DeviceId` (`jellyfin-boucle-…`) : deux PC ne se déconnectent pas l'un l'autre.
+
+Variables d'environnement (dans l'unité systemd, ou avant `npm start`) ; elles priment sur `config.json` :
+
+| Variable | Défaut | Rôle |
+|---|---|---|
+| `PORT` | `8787` | port de l'interface |
+| `HOST` | `0.0.0.0` | adresse d'écoute (doit inclure `localhost` et l'IP du réseau local) |
+| `PUBLIC_URL` | déduite | adresse affichée dans le QR code, si la détection choisit la mauvaise interface |
+| `JELLYFIN_URL` | `config.json` | serveur Jellyfin |
+| `JELLYFIN_USER` | `config.json` | utilisateur dont la session MPV Shim est pilotée |
+| `PLAYER_DEVICE_ID` | — | `DeviceId` exact de MPV Shim (voir `npm run spike`) ; prioritaire sur la détection |
+| `PLAYER_MATCH` | `mpv` | motif (regex) cherché dans `Client` / `DeviceName` |
+| `DEFAULT_SERIES` | `The Office` | série choisie au premier lancement |
+| `JELLYFIN_OFFICE_DIR` | voir plus haut | dossier de configuration |
+
+Le choix manuel du lecteur est aussi possible dans l'assistant (Réglages → Serveur & compte → MPV Shim).
+
+## Dépannage
+
+- **« MPV Shim introuvable »** : MPV Shim doit être lancé et connecté avec le même utilisateur. Sinon, `npm run spike` montre toutes les sessions et la raison de chaque refus.
+- **Le téléphone n'arrive pas à ouvrir la page** : même Wi-Fi que le PC ? Port 8787 ouvert dans le pare-feu ? Sous Windows, réseau en mode « privé » ? Si le QR code pointe vers une mauvaise adresse (VPN, machine virtuelle…), en choisir une autre sous le QR code ou fixer `PUBLIC_URL`.
+- **Journal** : `journalctl --user -u jellyfin-office -f` (Linux), `%APPDATA%\jellyfin-office\service.log` (Windows), ou Réglages → Journal dans l'interface.
+- **Redémarrer** : `systemctl --user restart jellyfin-office` (Linux) ; sous Windows, fermer la session ou relancer la tâche « Jellyfin en boucle ».
+- **Désinstaller** : Linux : `systemctl --user disable --now jellyfin-office`, puis supprimer l'unité et les deux fichiers `.desktop` ajoutés dans `~/.config/autostart`. Windows : supprimer la tâche planifiée, la règle de pare-feu « Jellyfin en boucle » et le raccourci du dossier Démarrage.
+
+**Sécurité** : l'interface n'a pas de mot de passe. Toute personne sur le réseau local peut piloter la lecture et changer la configuration. Ne pas exposer le port 8787 sur Internet.
+
+## Développement
+
+```bash
+npm install
+npm run dev        # backend (tsx watch) sur :8787
+npm run dev:web    # front Vite avec rechargement à chaud (proxy /api vers :8787)
+npm test           # tests (vitest)
+npm run typecheck
+npm run build      # dist/server + dist/web
+npm start          # node dist/server/index.js
+```
+
+```
+src/
+  config.ts             config.json, chemins, identité du client
+  jellyfin/client.ts    API Jellyfin typée (auth, erreurs, délais)
+  jellyfin/session.ts   reconnaissance de la session MPV Shim
+  jellyfin/discovery.ts découverte UDP des serveurs
+  player/loop.ts        boucle de surveillance + actions
+  player/queue.ts       file, historique, tirage (fonctions pures)
+  player/library.ts     caches séries / épisodes / pistes
+  store.ts              state.json (écriture atomique, migration)
+  setup.ts              assistant de configuration
+  api/routes.ts         API REST
+  api/events.ts         SSE
+web/                    front React (Vite)
+scripts/spike.ts        vérification de MPV Shim
+deploy/linux, deploy/windows
+```
+
+### API
+
+```
+GET    /api/state                 état complet (aussi poussé en SSE sur /api/events)
+POST   /api/player/pause | resume | skip | stop
+POST   /api/player/seek           { positionSec }
+POST   /api/player/volume         { volume } | { muted }
+POST   /api/player/audio          { index }
+POST   /api/player/subtitle       { index }      -1 = désactivés
+POST   /api/auto                  { enabled }
+PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs? }
+GET    /api/series
+PUT    /api/series                { seriesId, playNow? }
+GET    /api/queue
+POST   /api/queue/reroll
+POST   /api/queue/play-now        { episodeId }
+DELETE /api/queue/:episodeId
+PATCH  /api/queue                 { order: string[] }
+GET    /api/history?limit=50
+DELETE /api/history
+GET    /api/image/:itemId         proxy des images Jellyfin
+GET    /api/access, /api/qr.svg   adresses et QR code d'accès
+GET    /api/setup, /api/setup/discover
+POST   /api/setup/server | login | logout | player
+GET    /api/logs, /api/debug/sessions, /api/health
+```
