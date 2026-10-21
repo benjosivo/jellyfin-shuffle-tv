@@ -57,6 +57,9 @@ export interface MenuItem {
   enabled?: boolean;
   separator?: boolean;
   visible?: boolean;
+  /** Entrée à choix unique (Aléatoire / Dans l'ordre). */
+  radio?: boolean;
+  checked?: boolean;
   action?: () => void;
 }
 
@@ -72,9 +75,13 @@ export function buildMenu(summary: TraySummary, actions: Record<string, () => vo
     { id: 10, label: "Ouvrir l'interface", enabled: running, action: actions.open },
     { id: 11, label: "Afficher le QR code (téléphone)", enabled: running, action: actions.qr },
     { id: 12, separator: true },
+    { id: 19, label: "Épisode précédent", enabled: summary.canPrevious, action: actions.previous },
     { id: 20, ...toggle },
     { id: 21, label: "Épisode suivant", enabled: summary.canSkip, action: actions.skip },
     { id: 22, separator: true },
+    { id: 23, label: "Aléatoire", radio: true, checked: summary.order === "shuffle", enabled: Boolean(summary.order), action: actions.shuffle },
+    { id: 24, label: "Dans l'ordre", radio: true, checked: summary.order === "sequential", enabled: Boolean(summary.order), action: actions.sequential },
+    { id: 25, separator: true },
     { id: 30, label: running ? "Redémarrer le serveur" : "Démarrer le serveur", enabled: true, action: actions.restart },
     { id: 31, label: "Masquer cette icône", enabled: true, action: actions.quit },
   ];
@@ -85,11 +92,13 @@ type Layout = [number, [string, Variant][], [string, Layout][]];
 
 function itemProperties(item: MenuItem): [string, Variant][] {
   if (item.separator) return [["type", ["s", "separator"]]];
-  return [
+  const props: [string, Variant][] = [
     ["label", ["s", (item.label ?? "").replace(/_/g, "__")]],
     ["enabled", ["b", item.enabled !== false]],
     ["visible", ["b", item.visible !== false]],
   ];
+  if (item.radio) props.push(["toggle-type", ["s", "radio"]], ["toggle-state", ["i", item.checked ? 1 : 0]]);
+  return props;
 }
 
 // --- Icône ---------------------------------------------------------------------------------------
@@ -110,10 +119,16 @@ function openUrl(url: string): void {
   spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).on("error", () => log("xdg-open introuvable")).unref();
 }
 
-async function post(path: string): Promise<void> {
-  await fetch(BASE + path, { method: "POST", signal: AbortSignal.timeout(5000) }).catch(() => undefined);
+async function send(method: string, path: string, body?: unknown): Promise<void> {
+  await fetch(BASE + path, {
+    method,
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    signal: AbortSignal.timeout(5000),
+  }).catch(() => undefined);
   void refresh();
 }
+const post = (path: string) => send("POST", path);
 
 async function fetchSummary(): Promise<TraySummary> {
   try {
@@ -137,6 +152,9 @@ const actions = {
   pause: () => void post("/api/player/pause"),
   resume: () => void post("/api/player/resume"),
   skip: () => void post("/api/player/skip"),
+  previous: () => void post("/api/player/previous"),
+  shuffle: () => void send("PUT", "/api/order", { order: "shuffle" }),
+  sequential: () => void send("PUT", "/api/order", { order: "sequential" }),
   restart: () =>
     execFile("systemctl", ["--user", "restart", "jellyfin-office.service"], (err) => {
       if (err) log(`Redémarrage impossible : ${err.message}`);

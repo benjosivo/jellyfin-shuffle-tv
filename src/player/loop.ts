@@ -4,7 +4,15 @@ import { JellyfinError, type JellyfinApi } from "../jellyfin/client.js";
 import { findPlayerSession, type PlayerMatchConfig } from "../jellyfin/session.js";
 import { supportedCommands, TICKS_PER_SECOND, type JfSession } from "../jellyfin/types.js";
 import { log as defaultLog } from "../log.js";
-import type { EpisodeInfo, JellyfinStatus, PublicState, SeriesState, Settings } from "../shared/types.js";
+import type {
+  EpisodeInfo,
+  EpisodeListItem,
+  JellyfinStatus,
+  PlayOrder,
+  PublicState,
+  SeriesState,
+  Settings,
+} from "../shared/types.js";
 import { SETTING_BOUNDS, type Store } from "../store.js";
 import { toEpisodeInfo, type Library, type SeriesEpisodes } from "./library.js";
 import * as queue from "./queue.js";
@@ -238,11 +246,17 @@ export class PlayerLoop extends EventEmitter {
   private async advance(
     session: JfSession,
     episodes: SeriesEpisodes,
-    opts: { stopFirst: boolean; episodeId?: string },
+    /** `taken` : file et historique déjà mis à jour par l'appelant (épisode précédent). */
+    opts: { stopFirst: boolean; episodeId?: string; taken?: boolean },
   ): Promise<string> {
     const state = this.store.seriesState(episodes.seriesId);
     const ctx = this.queueContext(episodes);
-    const id = opts.episodeId ? queue.takeSpecific(state, opts.episodeId, ctx) : queue.takeNext(state, ctx);
+    const id =
+      opts.taken && opts.episodeId
+        ? opts.episodeId
+        : opts.episodeId
+          ? queue.takeSpecific(state, opts.episodeId, ctx)
+          : queue.takeNext(state, ctx);
     if (!id) throw new HttpError(409, "Aucun épisode disponible dans cette série.");
     this.store.save();
 
@@ -261,7 +275,7 @@ export class PlayerLoop extends EventEmitter {
     try {
       await this.api.play(session.Id, id);
     } catch (err) {
-      queue.undoTake(state, id, ctx);
+      if (!opts.taken) queue.undoTake(state, id, ctx);
       this.store.save();
       this.ignoreUntil = this.now() + SETTLE_MS;
       this.log.error(`Lancement impossible : ${(err as Error).message}`);
@@ -326,7 +340,22 @@ export class PlayerLoop extends EventEmitter {
   }
 
   private queueContext(episodes: SeriesEpisodes): queue.QueueContext {
-    return { episodeIds: episodes.episodes.map((e) => e.id), settings: this.store.settings, now: this.now };
+    return {
+      episodeIds: episodes.episodes.map((e) => e.id),
+      currentId: this.currentEpisodeId(episodes),
+      settings: this.store.settings,
+      now: this.now,
+    };
+  }
+
+  /** Épisode de la série en cours de lecture (ou, à défaut, le dernier lancé par l'application). */
+  private currentEpisodeId(episodes: SeriesEpisodes): string | undefined {
+    // Juste après un lancement, la session renvoie encore l'ancien épisode : on se fie au nôtre.
+    if (this.pending && episodes.byId.has(this.pending.id)) return this.pending.id;
+    const playing = this.session?.NowPlayingItem?.Id;
+    if (playing && episodes.byId.has(playing)) return playing;
+    const last = this.store.state.lastStarted;
+    return last && episodes.byId.has(last.id) ? last.id : undefined;
   }
 
   private async currentEpisodes(): Promise<SeriesEpisodes> {
@@ -374,6 +403,21 @@ export class PlayerLoop extends EventEmitter {
         this.log.info("Arrêt demandé : mode auto désactivé.");
       }
       await this.api.playstate(s.Id, "Stop");
+    });
+  }
+
+  /** Saut relatif (ex. -15, +5) à partir de la position estimée maintenant. */
+  seekBy(deltaSec: number): Promise<void> {
+    return this.action(async (s) => {
+      const item = s.NowPlayingItem;
+      if (!item) throw new HttpError(409, "Rien en cours de lecture.");
+      const playState = s.PlayState ?? {};
+      let position = (playState.PositionTicks ?? 0) / TICKS_PER_SECOND;
+      // Le relevé date de quelques secondes : on tient compte du temps écoulé depuis.
+      if (!playState.IsPaused) position += Math.max(0, this.now() - this.sampledAt) / 1000;
+      const runtime = item.RunTimeTicks ? item.RunTimeTicks / TICKS_PER_SECOND : Infinity;
+      const target = Math.min(Math.max(0, position + deltaSec), Math.max(0, runtime - 1));
+      await this.api.playstate(s.Id, "Seek", { seekPositionTicks: Math.round(target * TICKS_PER_SECOND) });
     });
   }
 
@@ -483,6 +527,43 @@ export class PlayerLoop extends EventEmitter {
     });
   }
 
+  /** Épisode précédent (dans la série en mode ordre, dans l'historique en aléatoire). */
+  previous(): Promise<string> {
+    return this.action(async (s) => {
+      const episodes = await this.currentEpisodes();
+      const state = this.store.seriesState(episodes.seriesId);
+      const id = queue.stepBack(state, this.queueContext(episodes));
+      if (!id) throw new HttpError(409, "Pas d'épisode précédent.");
+      this.store.save();
+      return this.advance(s, episodes, { stopFirst: false, episodeId: id, taken: true });
+    });
+  }
+
+  /** « Lire ensuite » : place l'épisode en tête de file. */
+  playNext(episodeId: string): Promise<void> {
+    return this.queueOp((state, ctx, episodes) => {
+      if (!episodes.byId.has(episodeId)) throw new HttpError(404, "Épisode inconnu dans cette série.");
+      queue.playNext(state, episodeId, ctx);
+    });
+  }
+
+  setOrder(order: PlayOrder): Promise<void> {
+    return this.queueOp((state, ctx, episodes) => {
+      queue.setOrder(state, order, ctx);
+      this.log.info(`${episodes.seriesName} : lecture ${order === "sequential" ? "dans l'ordre" : "aléatoire"}.`);
+    });
+  }
+
+  /** Tous les épisodes de la série courante, avec leur statut. */
+  async episodes(): Promise<EpisodeListItem[]> {
+    const episodes = await this.currentEpisodes();
+    const state = this.store.seriesState(episodes.seriesId);
+    const seen = new Set(state.history.map((entry) => entry.id));
+    const queued = new Set(state.queue);
+    const current = this.currentEpisodeId(episodes);
+    return episodes.episodes.map((e) => ({ ...e, seen: seen.has(e.id), queued: queued.has(e.id), playing: e.id === current }));
+  }
+
   playNow(episodeId: string): Promise<string> {
     return this.action(async (s) => {
       const episodes = await this.currentEpisodes();
@@ -561,6 +642,10 @@ export class PlayerLoop extends EventEmitter {
       queue: (seriesState?.queue ?? []).map((id) => this.describe(id, episodes)),
       history: this.history(HISTORY_SUMMARY),
       historyCount: seriesState?.history.length ?? 0,
+      order: seriesState?.order ?? "shuffle",
+      canPrevious: Boolean(
+        episodes && seriesState && queue.previousOf(seriesState, this.queueContext(episodes)) !== undefined,
+      ),
       historyLimit: lim.historyLimit,
       sampledAt: this.sampledAt,
       remoteClients: this.remote,

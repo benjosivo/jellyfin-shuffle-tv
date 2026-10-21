@@ -1,10 +1,10 @@
-import type { MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import type { PublicState } from "../../../src/shared/types";
 import { api } from "../api";
 import { duration, episodeCode } from "../format";
 import { useAction } from "../toast";
 import { useLivePosition } from "../useServerState";
-import { NextIcon, PauseIcon, PlayIcon, StopIcon } from "./icons";
+import { NextIcon, PauseIcon, PlayIcon, PrevIcon, StopIcon } from "./icons";
 import { Thumb } from "./Thumb";
 
 export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; receivedAt: number }) {
@@ -15,6 +15,23 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
   const runtime = np?.runTimeSec ?? 0;
   const progress = runtime > 0 ? Math.min(100, (position / runtime) * 100) : 0;
   const canSeek = Boolean(ready && np?.canSeek && runtime > 0);
+
+  // Les appuis rapides sur ±5 / ±15 s s'additionnent : un seul saut est envoyé après 400 ms.
+  const [jump, setJump] = useState(0);
+  const jumpTimer = useRef<number | undefined>(undefined);
+  const jumpTotal = useRef(0);
+  useEffect(() => () => window.clearTimeout(jumpTimer.current), []);
+  const jumpBy = (delta: number) => {
+    jumpTotal.current += delta;
+    setJump(jumpTotal.current);
+    window.clearTimeout(jumpTimer.current);
+    jumpTimer.current = window.setTimeout(() => {
+      const deltaSec = jumpTotal.current;
+      jumpTotal.current = 0;
+      setJump(0);
+      if (deltaSec !== 0) void run(() => api.post("/player/seek-by", { deltaSec }));
+    }, 400);
+  };
 
   const seek = (event: MouseEvent<HTMLDivElement>) => {
     if (!canSeek) return;
@@ -49,7 +66,16 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
           </div>
           <div className="times">
             <span>{duration(position)}</span>
+            {jump !== 0 && <span className="jump-pending">{jump > 0 ? `+${jump}` : jump} s</span>}
             <span>{runtime > 0 ? `-${duration(runtime - position)}` : "--:--"}</span>
+          </div>
+          <div className="jumps" role="group" aria-label="Avancer ou reculer">
+            {[-15, -5, 5, 15].map((delta) => (
+              <button key={delta} className="jump" disabled={!canSeek} onClick={() => jumpBy(delta)} aria-label={`${delta > 0 ? "Avancer" : "Reculer"} de ${Math.abs(delta)} secondes`}>
+                {delta > 0 ? `+${delta}` : `−${-delta}`}
+                <small>s</small>
+              </button>
+            ))}
           </div>
         </>
       ) : (
@@ -63,8 +89,8 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
       )}
 
       <div className="controls">
-        <button className="round" disabled={!ready || !np} onClick={() => run(() => api.post("/player/stop"))} aria-label="Stop" title="Stop (désactive le mode auto)">
-          <StopIcon />
+        <button className="round" disabled={!ready || !state.canPrevious} onClick={() => run(() => api.post("/player/previous"))} aria-label="Épisode précédent" title="Épisode précédent">
+          <PrevIcon />
         </button>
         <button
           className="round round-main"
@@ -74,8 +100,13 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
         >
           {np?.isPaused ? <PlayIcon size={34} /> : <PauseIcon size={34} />}
         </button>
-        <button className="round" disabled={!ready || !state.series} onClick={() => run(() => api.post("/player/skip"))} aria-label="Passer" title="Épisode suivant">
+        <button className="round" disabled={!ready || !state.series} onClick={() => run(() => api.post("/player/skip"))} aria-label="Épisode suivant" title="Épisode suivant">
           <NextIcon />
+        </button>
+      </div>
+      <div className="secondary-controls">
+        <button className="small" disabled={!ready || !np} onClick={() => run(() => api.post("/player/stop"))} title="Arrête la lecture et désactive le mode auto">
+          <StopIcon size={14} /> Stop
         </button>
       </div>
     </section>

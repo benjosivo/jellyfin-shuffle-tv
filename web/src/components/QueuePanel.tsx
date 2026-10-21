@@ -1,8 +1,9 @@
-import type { PublicState } from "../../../src/shared/types";
+import type { ReactNode } from "react";
+import type { PlayOrder, PublicState } from "../../../src/shared/types";
 import { api } from "../api";
 import { episodeCode } from "../format";
 import { useAction } from "../toast";
-import { CloseIcon, PlayIcon, ShuffleIcon, UpIcon } from "./icons";
+import { CloseIcon, OrderIcon, PlayIcon, ShuffleIcon, UpIcon } from "./icons";
 import { Thumb } from "./Thumb";
 
 export function QueuePanel({ state }: { state: PublicState }) {
@@ -20,10 +21,32 @@ export function QueuePanel({ state }: { state: PublicState }) {
     <section className="card">
       <div className="card-head">
         <h2>À suivre</h2>
-        <button className="small" disabled={!state.series} onClick={() => run(() => api.post("/queue/reroll"), "Nouveau tirage effectué")}>
-          <ShuffleIcon /> Nouveau tirage
-        </button>
+        {state.order === "shuffle" && (
+          <button className="small" disabled={!state.series} onClick={() => run(() => api.post("/queue/reroll"), "Nouveau tirage effectué")}>
+            <ShuffleIcon /> Nouveau tirage
+          </button>
+        )}
       </div>
+      <div className="segmented" role="radiogroup" aria-label="Ordre de lecture">
+        {(
+          [
+            ["shuffle", "Aléatoire", <ShuffleIcon key="i" />],
+            ["sequential", "Dans l'ordre", <OrderIcon key="i" />],
+          ] as [PlayOrder, string, ReactNode][]
+        ).map(([value, label, icon]) => (
+          <button
+            key={value}
+            role="radio"
+            aria-checked={state.order === value}
+            className={state.order === value ? "active" : ""}
+            disabled={!state.series}
+            onClick={() => state.order !== value && run(() => api.put("/order", { order: value }))}
+          >
+            {icon} {label}
+          </button>
+        ))}
+      </div>
+      {state.order === "sequential" && <p className="hint">Les épisodes s'enchaînent dans l'ordre ; après le dernier, retour au premier.</p>}
       {queue.length === 0 ? (
         <p className="muted empty">{state.series ? "File vide." : "Aucune série sélectionnée."}</p>
       ) : (

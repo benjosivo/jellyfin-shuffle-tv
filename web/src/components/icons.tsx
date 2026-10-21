@@ -24,6 +24,9 @@ export const PauseIcon = ({ size = 28 }: Props) =>
   svg(size, <><rect x="6" y="4.5" width="4" height="15" rx="1" /><rect x="14" y="4.5" width="4" height="15" rx="1" /></>, true);
 export const NextIcon = ({ size = 24 }: Props) =>
   svg(size, <><path d="M5 5.5v13a1 1 0 0 0 1.5.86L16 13.5a1.7 1.7 0 0 0 0-3L6.5 4.64A1 1 0 0 0 5 5.5z" /><rect x="17" y="4.5" width="3" height="15" rx="1" /></>, true);
+export const PrevIcon = ({ size = 24 }: Props) =>
+  svg(size, <><path d="M19 5.5v13a1 1 0 0 1-1.5.86L8 13.5a1.7 1.7 0 0 1 0-3l9.5-5.86A1 1 0 0 1 19 5.5z" /><rect x="4" y="4.5" width="3" height="15" rx="1" /></>, true);
+export const OrderIcon = ({ size = 18 }: Props) => svg(size, <path d="M4 6h11M4 12h11M4 18h11M19 4v16M16 17l3 3 3-3" />);
 export const StopIcon = ({ size = 22 }: Props) => svg(size, <rect x="5.5" y="5.5" width="13" height="13" rx="2" />, true);
 export const UpIcon = ({ size = 20 }: Props) => svg(size, <path d="M12 19V5M5 12l7-7 7 7" />);
 export const CloseIcon = ({ size = 20 }: Props) => svg(size, <path d="M6 6l12 12M18 6L6 18" />);

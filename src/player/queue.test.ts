@@ -158,3 +158,83 @@ describe("file d'attente", () => {
     expect(s.queue).toEqual(["ep2"]);
   });
 });
+
+describe("dans l'ordre", () => {
+  const seq = (): SeriesState => ({ history: [], queue: [], order: "sequential" });
+
+  it("successeur et prédécesseur bouclent sur la série", () => {
+    const c = ctx(4);
+    expect(q.successor("ep4", c)).toBe("ep1");
+    expect(q.successor(undefined, c)).toBe("ep1");
+    expect(q.predecessor("ep1", c)).toBe("ep4");
+    expect(q.predecessor("ep3", c)).toBe("ep2");
+  });
+
+  it("la file est la suite de l'épisode en cours, y compris des épisodes déjà vus", () => {
+    const c = ctx(20, { currentId: "ep7" });
+    const s: SeriesState = { ...seq(), history: [{ id: "ep8", at: 1 }, { id: "ep7", at: 2 }] };
+    q.refill(s, c);
+    expect(s.queue).toEqual(["ep8", "ep9", "ep10", "ep11", "ep12"]);
+    q.sanitize(s, c);
+    expect(s.queue[0]).toBe("ep8"); // un épisode déjà vu reste dans la file en mode ordre
+  });
+
+  it("enchaîne dans l'ordre et repart au début après le dernier épisode", () => {
+    const c = ctx(6);
+    const s = seq();
+    const played = Array.from({ length: 8 }, () => q.takeNext(s, c));
+    expect(played).toEqual(["ep1", "ep2", "ep3", "ep4", "ep5", "ep6", "ep1", "ep2"]);
+  });
+
+  it("lire maintenant : la suite repart de l'épisode choisi", () => {
+    const c = ctx(20, { currentId: "ep2" });
+    const s = seq();
+    q.refill(s, c);
+    q.takeSpecific(s, "ep15", c);
+    expect(s.queue).toEqual(["ep16", "ep17", "ep18", "ep19", "ep20"]);
+  });
+
+  it("passer d'un mode à l'autre reconstruit la file", () => {
+    const c = ctx(30, { currentId: "ep10" });
+    const s = empty();
+    q.refill(s, c);
+    q.setOrder(s, "sequential", c);
+    expect(s.queue).toEqual(["ep11", "ep12", "ep13", "ep14", "ep15"]);
+    q.setOrder(s, "shuffle", c);
+    expect(s.order).toBe("shuffle");
+    expect(s.queue).toHaveLength(5);
+  });
+});
+
+describe("lire ensuite / épisode précédent", () => {
+  it("lire ensuite place l'épisode en tête sans dépasser la taille de la file", () => {
+    const c = ctx(20);
+    const s = empty();
+    q.refill(s, c);
+    const third = s.queue[2]!;
+    q.playNext(s, "ep20", c);
+    expect(s.queue[0]).toBe("ep20");
+    expect(s.queue).toHaveLength(5);
+    q.playNext(s, third, c);
+    expect(s.queue[0]).toBe(third);
+    expect(s.queue.filter((id) => id === third)).toHaveLength(1);
+  });
+
+  it("aléatoire : précédent remonte l'historique, et suivant ramène à l'épisode quitté", () => {
+    const s: SeriesState = { history: ["ep3", "ep9", "ep5"].map((id, at) => ({ id, at })), queue: ["ep1", "ep2"] };
+    const c = ctx(20, { currentId: "ep5" });
+    expect(q.stepBack(s, c)).toBe("ep9");
+    expect(s.queue[0]).toBe("ep5");
+    expect(s.history.map((h) => h.id)).toEqual(["ep3", "ep9"]);
+    // Un deuxième « précédent » remonte encore.
+    expect(q.stepBack(s, ctx(20, { currentId: "ep9" }))).toBe("ep3");
+    expect(s.queue.slice(0, 2)).toEqual(["ep9", "ep5"]);
+  });
+
+  it("dans l'ordre : précédent = épisode d'avant dans la série, l'épisode quitté devient le suivant", () => {
+    const s: SeriesState = { history: [], queue: [], order: "sequential" };
+    const c = ctx(20, { currentId: "ep1" });
+    expect(q.stepBack(s, c)).toBe("ep20");
+    expect(s.queue[0]).toBe("ep1");
+  });
+});

@@ -136,6 +136,25 @@ L'interface grise d'elle-même les réglages que le lecteur ne déclare pas (`Ca
 
 ## Utilisation
 
+Depuis le téléphone (ou le PC) :
+
+- **Carte « En cours »** :
+  - barre de progression : toucher pour aller à un endroit précis ;
+  - **−15 s · −5 s · +5 s · +15 s** : les appuis rapides s'additionnent (par exemple 3 × +15 puis −5 donne un seul saut de +40 s) ;
+  - **⏮ épisode précédent · ⏯ pause / reprise · ⏭ épisode suivant**.
+- **Épisode précédent** :
+  - en aléatoire, on remonte l'historique ; un nouvel appui remonte encore, et « suivant » ramène à l'épisode quitté ;
+  - dans l'ordre, c'est l'épisode d'avant dans la série.
+- **Aléatoire / Dans l'ordre** : sélecteur en haut de « À suivre », réglé pour chaque série.
+  - Dans l'ordre, les épisodes s'enchaînent par saison puis numéro, à partir de l'épisode en cours ; après le dernier, retour au premier.
+  - Repasser en aléatoire refait un tirage.
+- **Tous les épisodes** : liste par saison, avec recherche (« S02E05 » ou un mot du titre) et repères « vu », « en file », « en cours ».
+  - **Ensuite** : l'épisode passe en tête de la file.
+  - **▶ Lire maintenant** : il démarre tout de suite. Dans l'ordre, la suite repart de lui.
+- L'icône d'état près de l'horloge propose aussi épisode précédent / suivant, pause, et le choix aléatoire / dans l'ordre.
+
+Comportement :
+
 - **Mode auto** (réglages) : enchaînement automatique. Désactivé, l'application ne fait plus rien d'elle-même ; les boutons restent utilisables.
 - **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard).
 - **Passer** et **Lire maintenant** reprennent toujours la main, même si autre chose a été lancé à la main.
@@ -156,7 +175,10 @@ L'interface grise d'elle-même les réglages que le lecteur ne déclare pas (`Ca
 | Moins de 30 s restantes sur un épisode lancé par l'application | `Stop` puis, 2 s après, `PlayNow` de la tête de file |
 | Moins de 8 s depuis le dernier changement | rien (la session renvoie encore l'ancien épisode) |
 
-**File et historique**, par série : la file contient 5 épisodes tirés hors historique ; l'historique garde 95 % des épisodes de la série (borné pour qu'il reste toujours de quoi tirer, quelle que soit la taille de la série).
+**File et historique**, par série :
+- en aléatoire, la file contient 5 épisodes tirés hors historique ;
+- dans l'ordre, elle contient les 5 épisodes qui suivent ;
+- l'historique garde 95 % des épisodes de la série. Il est borné pour qu'il reste toujours de quoi tirer, quelle que soit la taille de la série.
 
 ### Corrections par rapport au script fish
 
@@ -243,6 +265,8 @@ deploy/linux, deploy/windows   install / uninstall, icône d'état Windows (tray
 GET    /api/state                 état complet (aussi poussé en SSE sur /api/events)
 POST   /api/player/pause | resume | skip | stop
 POST   /api/player/seek           { positionSec }
+POST   /api/player/seek-by        { deltaSec }   saut relatif (-600..600)
+POST   /api/player/previous       épisode précédent
 POST   /api/player/volume         { volume } | { muted }
 POST   /api/player/audio          { index }
 POST   /api/player/subtitle       { index }      -1 = désactivés
@@ -250,9 +274,12 @@ POST   /api/auto                  { enabled }
 PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs? }
 GET    /api/series
 PUT    /api/series                { seriesId, playNow? }
+GET    /api/episodes              épisodes de la série courante (+ vu / en file / en cours)
+PUT    /api/order                 { order: "shuffle" | "sequential" }   pour la série courante
 GET    /api/queue
 POST   /api/queue/reroll
 POST   /api/queue/play-now        { episodeId }
+POST   /api/queue/play-next       { episodeId }  en tête de file
 DELETE /api/queue/:episodeId
 PATCH  /api/queue                 { order: string[] }
 GET    /api/history?limit=50
