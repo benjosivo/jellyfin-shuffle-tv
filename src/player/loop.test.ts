@@ -35,7 +35,7 @@ class FakeJellyfin implements JellyfinApi {
   session(): JfSession {
     return {
       Id: "sess-mpv",
-      UserName: "En Boucle",
+      UserName: "Salon",
       Client: "Jellyfin MPV Shim",
       DeviceName: "cachyos",
       DeviceId: "mpv-device",
@@ -52,7 +52,7 @@ class FakeJellyfin implements JellyfinApi {
     if (!this.reachable) throw new JellyfinError("unreachable", "down");
     return [
       // La session du token de l'application elle-même : ne doit jamais être prise pour MPV Shim.
-      { Id: "sess-self", UserName: "En Boucle", Client: "CachyOS Office Auto", DeviceId: "self", SupportsRemoteControl: true },
+      { Id: "sess-self", UserName: "Salon", Client: "CachyOS Office Auto", DeviceId: "self", SupportsRemoteControl: true },
       ...this.extraSessions,
       this.session(),
     ] as JfSession[];
@@ -98,7 +98,7 @@ async function setup(opts: { legacy?: string[] } = {}) {
     api: fake,
     store,
     library: new Library(fake, () => clock),
-    match: () => ({ userName: "En Boucle", ownDeviceId: "self", pattern: /mpv/i }),
+    match: () => ({ userName: "Salon", ownDeviceId: "self", pattern: /mpv/i }),
     isConfigured: async () => true,
     defaultSeriesName: () => "The Office",
     now: () => clock,
@@ -279,7 +279,7 @@ describe("PlayerLoop", () => {
     await loop.tick();
     expect(loop.snapshot().jellyfin).toBe("unreachable");
     fake.reachable = true;
-    fake.session = () => ({ Id: "x", Client: "Jellyfin Web", SupportsRemoteControl: true, UserName: "En Boucle" });
+    fake.session = () => ({ Id: "x", Client: "Jellyfin Web", SupportsRemoteControl: true, UserName: "Salon" });
     await loop.tick();
     expect(loop.snapshot().jellyfin).toBe("ok");
     expect(loop.snapshot().player).toBe("missing");

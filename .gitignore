@@ -2,3 +2,13 @@ node_modules/
 dist/
 *.log
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*.sql
+*.sql.gz
+*.dump
+spike-report.json

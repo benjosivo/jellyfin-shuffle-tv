@@ -117,7 +117,7 @@ La désinstallation peut être relancée sans risque. Installer puis désinstall
 Ouvrir `http://localhost:8787` sur le PC (ou scanner le QR code) :
 
 - **PC neuf** : l'assistant demande le serveur (trouvé automatiquement s'il est sur le même réseau), le compte Jellyfin, puis guide la connexion de MPV Shim (lancer MPV Shim, y ajouter le même serveur et le même utilisateur) et le choix de la série.
-- **PC qui utilisait déjà le script fish** : rien à refaire. Le token créé par `auth.py` est repris tel quel (serveur `192.168.1.122:8096`, utilisateur `En Boucle`), et l'ancien fichier `history` est importé dans l'historique de *The Office* au premier lancement.
+- **PC qui utilisait déjà le script fish** : l'assistant demande seulement le serveur (trouvé automatiquement). Le token créé par `auth.py` est conservé s'il est valide sur ce serveur, sans redemander le mot de passe. L'ancien fichier `history` est importé dans l'historique de la série par défaut (*The Office*).
 
 ## À faire en premier sur la machine actuelle : le spike
 

@@ -41,15 +41,13 @@ export interface Paths {
 
 export const APP_VERSION = "1.0";
 
-/** Identité utilisée par l'ancien auth.py : le token existant de la machine actuelle y est lié. */
+/** Identité utilisée par l'ancien script auth.py : un token déjà créé par lui y est lié. */
 export const LEGACY_IDENTITY: Identity = {
   client: "CachyOS Office Auto",
   device: "CachyOS",
   deviceId: "cachyos-office-auto",
   version: APP_VERSION,
 };
-const LEGACY_SERVER_URL = "http://192.168.1.122:8096";
-const LEGACY_USER_NAME = "En Boucle";
 
 export const DEFAULTS = {
   defaultSeriesName: "The Office",
@@ -117,8 +115,9 @@ export class ConfigManager {
         throw new Error(`config.json invalide : ${this.paths.configFile}`);
       }
     } else if (await readText(this.paths.tokenFile)) {
-      // Machine configurée avec auth.py : on reprend ses valeurs pour garder le token valide.
-      this.file = { serverUrl: LEGACY_SERVER_URL, userName: LEGACY_USER_NAME, identity: { ...LEGACY_IDENTITY } };
+      // Machine configurée avec l'ancien auth.py : on garde son identité pour que le token reste
+      // valide. Le serveur sera choisi dans l'assistant, qui conservera ce token (Setup.setServer).
+      this.file = { identity: { ...LEGACY_IDENTITY } };
     }
     if (!this.file.identity) {
       this.file.identity = {

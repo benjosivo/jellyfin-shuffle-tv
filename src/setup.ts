@@ -1,6 +1,6 @@
 import { normalizeServerUrl, type ConfigManager } from "./config.js";
 import { HttpError } from "./errors.js";
-import { authenticateByName, fetchPublicInfo, JellyfinError, revokeToken } from "./jellyfin/client.js";
+import { authenticateByName, fetchPublicInfo, fetchUser, JellyfinError, revokeToken } from "./jellyfin/client.js";
 import { discoverServers } from "./jellyfin/discovery.js";
 import { explainSessions, findPlayerSession, type PlayerMatchConfig } from "./jellyfin/session.js";
 import type { JfSession } from "./jellyfin/types.js";
@@ -107,12 +107,31 @@ export class Setup {
       throw new HttpError(502, `Aucun serveur Jellyfin à cette adresse (${(err as Error).message}).`);
     }
     if (url !== this.config.serverUrl) {
-      await this.revokeAndClear();
-      await this.config.update({ serverUrl: url });
+      // Premier choix de serveur avec un token déjà présent (ancien auth.py) : on le garde s'il est
+      // valide sur ce serveur, sans redemander le mot de passe.
+      const adopted = !this.config.serverUrl && (await this.adoptExistingToken(url));
+      if (!adopted) {
+        await this.revokeAndClear();
+        await this.config.update({ serverUrl: url });
+      }
       this.loop.resetConnection();
       log.info(`Serveur Jellyfin : ${url} (${info.ServerName ?? "?"}).`);
     }
     return { url, name: info.ServerName, version: info.Version };
+  }
+
+  private async adoptExistingToken(url: string): Promise<boolean> {
+    const credentials = await this.config.readCredentials();
+    if (!credentials) return false;
+    try {
+      const user = await fetchUser(url, this.config.identity, credentials.token, credentials.userId);
+      if (!user) return false;
+      await this.config.update({ serverUrl: url, userName: user.Name });
+      log.info(`Token existant conservé (utilisateur ${user.Name}).`);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async login(username: string, password: string): Promise<{ userName: string }> {
