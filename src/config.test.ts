@@ -20,13 +20,13 @@ describe("ConfigManager", () => {
     expect(again.identity).toEqual(config.identity);
   });
 
-  it("machine configurée avec auth.py : reprend serveur, utilisateur et identité du token", async () => {
+  it("machine configurée avec l'ancien auth.py : garde l'identité du token, le serveur reste à choisir", async () => {
     const paths = await tmp();
     await fs.writeFile(paths.tokenFile, "abc\n");
     await fs.writeFile(paths.userIdFile, "user1\n");
     const config = await ConfigManager.load(paths);
-    expect(config.serverUrl).toBe("http://192.168.1.122:8096");
-    expect(config.userName).toBe("En Boucle");
+    expect(config.serverUrl).toBeUndefined();
+    expect(config.userName).toBeUndefined();
     expect(config.identity).toEqual(LEGACY_IDENTITY);
     expect(await config.readCredentials()).toEqual({ token: "abc", userId: "user1" });
   });
@@ -45,11 +45,11 @@ describe("ConfigManager", () => {
 
 describe("normalizeServerUrl", () => {
   it("ajoute http:// et le port 8096 à une simple adresse", () => {
-    expect(normalizeServerUrl("192.168.1.122")).toBe("http://192.168.1.122:8096");
+    expect(normalizeServerUrl("192.0.2.10")).toBe("http://192.0.2.10:8096");
     expect(normalizeServerUrl(" jellyfin.local:8920 ")).toBe("http://jellyfin.local:8920");
   });
   it("garde une URL complète telle quelle", () => {
     expect(normalizeServerUrl("https://media.example.org/jellyfin/")).toBe("https://media.example.org/jellyfin");
-    expect(normalizeServerUrl("http://192.168.1.122:8096")).toBe("http://192.168.1.122:8096");
+    expect(normalizeServerUrl("http://192.0.2.10:8096")).toBe("http://192.0.2.10:8096");
   });
 });
