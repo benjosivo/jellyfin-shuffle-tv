@@ -13,7 +13,9 @@ Un seul process Node (port **8787**). Le token Jellyfin reste sur le PC : le té
 
 ## Installation
 
-Prérequis : Node.js ≥ 20 et Git (les scripts proposent d'installer Node.js s'il manque).
+Prérequis : Git. Tout le reste (Node.js, Jellyfin MPV Shim) est installé automatiquement s'il manque, **sans question**. Seuls restent le mot de passe `sudo` (Linux) ou la fenêtre de confirmation administrateur (Windows), puis la connexion de MPV Shim à Jellyfin, guidée par l'interface.
+
+Tout ce que l'installation ajoute est noté dans `install-manifest` (dossier de configuration) : la désinstallation retire exactement ça, et rien d'autre. L'installation peut être relancée autant de fois que voulu (mise à jour, réparation) ; ce qu'elle avait installé la première fois reste « à elle ».
 
 ### Linux
 
@@ -25,34 +27,56 @@ deploy/linux/install.sh
 
 Le script (à lancer sans `sudo`, il le demande au besoin) :
 
-1. vérifie Node.js ;
-2. installe **Jellyfin MPV Shim** s'il manque (AUR via `paru`/`yay` sur Arch/CachyOS, sinon Flatpak, sinon `pipx`) et le lance à l'ouverture de session ;
+1. installe Node.js ≥ 20 s'il manque ou s'il est trop ancien (paquets de la distribution ; dépôt officiel NodeSource sur Debian/Ubuntu) ;
+2. installe **Jellyfin MPV Shim** s'il manque (AUR via `paru`/`yay` sur Arch/CachyOS, sinon Flatpak, sinon `pipx`), le lance, et le fait démarrer à l'ouverture de session ;
 3. installe les dépendances et compile (`npm ci && npm run build`) ;
 4. installe et démarre le service `~/.config/systemd/user/jellyfin-office.service` (`Restart=on-failure`) ;
-5. propose d'ouvrir le port 8787 si `ufw` ou `firewalld` est actif ;
+5. ouvre le port 8787 si `ufw` ou `firewalld` est actif ;
 6. ajoute l'ouverture de la page QR code au login (`~/.config/autostart/jellyfin-en-boucle.desktop`) ;
 7. signale tout lancement automatique de l'ancien script fish **sans rien supprimer** : à désactiver soi-même, sinon les deux pilotent MPV Shim en même temps.
 
-Options : `--yes`, `--no-mpv-shim`, `--no-open-ui`. Port différent : `PORT=8080 deploy/linux/install.sh`.
+Options : `--ask` (confirmer chaque étape ; propose aussi le démarrage sans session ouverte, « linger »), `--no-mpv-shim`, `--no-open-ui`. Port différent : `PORT=8080 deploy/linux/install.sh`.
 
 ### Windows
 
 Dans PowerShell, depuis le dossier du projet :
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1
+powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -Yes
 ```
 
 Le script demande les droits administrateur (pare-feu, tâche planifiée) ; utiliser un compte qui est lui-même administrateur, pour que la tâche soit créée pour le bon utilisateur. Il :
 
 1. installe Node.js LTS avec `winget` s'il manque ;
-2. télécharge et lance l'installeur de **Jellyfin MPV Shim** (dernière version sur GitHub) s'il manque, et l'ajoute au dossier Démarrage ;
+2. télécharge la dernière version de **Jellyfin MPV Shim** sur GitHub et l'installe **en silence** s'il manque (repli sur l'installeur normal si besoin), le lance, et l'ajoute au dossier Démarrage ;
 3. compile l'application ;
 4. crée la tâche planifiée « Jellyfin en boucle » (au login, sans fenêtre, relance automatique en cas de plantage) ;
-5. ouvre le port 8787 sur les réseaux privés, et propose de passer le réseau de la maison en « privé » s'il est en « public » ;
+5. ouvre le port 8787 sur les réseaux privés. Si le réseau est en « public », il **demande toujours** avant de le passer en « privé », même avec `-Yes` : à ne faire que pour le réseau de la maison ;
 6. ajoute l'ouverture de la page QR code au login (raccourci dans le dossier Démarrage).
 
-Journal : `%APPDATA%\jellyfin-office\service.log`.
+Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+
+### Désinstallation
+
+```bash
+deploy/linux/uninstall.sh                                               # Linux
+powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall.ps1    # Windows
+```
+
+Par défaut, tout est retiré, secrets compris :
+
+1. **les jetons Jellyfin sont révoqués côté serveur** : celui de l'application et, si MPV Shim est retiré, les siens. Le PC disparaît de la liste des appareils de Jellyfin. Si le serveur est injoignable, les jetons sont quand même effacés du PC ;
+2. service / tâche planifiée, démarrages automatiques, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
+3. **MPV Shim et sa configuration, Node.js et les paquets système**, uniquement s'ils ont été installés par l'installation. Ce qui était déjà là avant est laissé en place ;
+4. tout le dossier de configuration : jeton, identifiants, `config.json`, historique, journaux, ancien `history` du script fish ;
+5. `node_modules` et `dist`.
+
+Le dossier du projet (code source, sans secret ni état) est conservé pour pouvoir réinstaller d'une commande. Options :
+- `--remove-folder` / `-RemoveFolder` : le supprimer aussi ;
+- `--keep-third-party` / `-KeepThirdParty` : garder MPV Shim et Node.js ;
+- `--yes` / `-Yes` : sans confirmation.
+
+La désinstallation peut être relancée sans risque. Installer puis désinstaller plusieurs fois d'affilée ne laisse rien derrière.
 
 ### Première utilisation
 
@@ -117,6 +141,7 @@ Fichiers dans `~/.config/jellyfin-office/` (Windows : `%APPDATA%\jellyfin-office
 | `state.json` | série courante, réglages, file et historique de chaque série, dernier épisode lancé |
 | `office.log` | journal (comme avant) |
 | `history` | ancien historique du script fish, importé une fois puis ignoré |
+| `install-manifest` | ce que l'installation a ajouté (lu par la désinstallation) |
 
 Chaque PC reçoit son propre `DeviceId` (`jellyfin-boucle-…`) : deux PC ne se déconnectent pas l'un l'autre.
 
@@ -142,7 +167,7 @@ Le choix manuel du lecteur est aussi possible dans l'assistant (Réglages → Se
 - **Le téléphone n'arrive pas à ouvrir la page** : même Wi-Fi que le PC ? Port 8787 ouvert dans le pare-feu ? Sous Windows, réseau en mode « privé » ? Si le QR code pointe vers une mauvaise adresse (VPN, machine virtuelle…), en choisir une autre sous le QR code ou fixer `PUBLIC_URL`.
 - **Journal** : `journalctl --user -u jellyfin-office -f` (Linux), `%APPDATA%\jellyfin-office\service.log` (Windows), ou Réglages → Journal dans l'interface.
 - **Redémarrer** : `systemctl --user restart jellyfin-office` (Linux) ; sous Windows, fermer la session ou relancer la tâche « Jellyfin en boucle ».
-- **Désinstaller** : Linux : `systemctl --user disable --now jellyfin-office`, puis supprimer l'unité et les deux fichiers `.desktop` ajoutés dans `~/.config/autostart`. Windows : supprimer la tâche planifiée, la règle de pare-feu « Jellyfin en boucle » et le raccourci du dossier Démarrage.
+- **Désinstaller** : voir [Désinstallation](#désinstallation).
 
 **Sécurité** : l'interface n'a pas de mot de passe. Toute personne sur le réseau local peut piloter la lecture et changer la configuration. Ne pas exposer le port 8787 sur Internet.
 
@@ -169,11 +194,12 @@ src/
   player/library.ts     caches séries / épisodes / pistes
   store.ts              state.json (écriture atomique, migration)
   setup.ts              assistant de configuration
+  revoke.ts, cli/       révocation des jetons Jellyfin (désinstallation, déconnexion)
   api/routes.ts         API REST
   api/events.ts         SSE
 web/                    front React (Vite)
 scripts/spike.ts        vérification de MPV Shim
-deploy/linux, deploy/windows
+deploy/linux, deploy/windows   install / uninstall (+ fonctions communes)
 ```
 
 ### API

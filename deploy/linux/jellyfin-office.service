@@ -1,5 +1,5 @@
 # Modèle installé par deploy/linux/install.sh dans ~/.config/systemd/user/jellyfin-office.service
-# (__APP_DIR__ et __NODE__ sont remplacés à l'installation).
+# (__APP_DIR__, __NODE__, __PORT__ et __CONFIG_DIR__ sont remplacés à l'installation).
 
 [Unit]
 Description=Jellyfin en boucle (lecture aléatoire continue sur MPV Shim + interface web)
@@ -12,6 +12,7 @@ Environment=NODE_ENV=production
 Environment=PORT=__PORT__
 # Écoute sur toutes les interfaces : nécessaire pour localhost (page QR) et pour le téléphone.
 Environment=HOST=0.0.0.0
+Environment=JELLYFIN_OFFICE_DIR=__CONFIG_DIR__
 # Optionnel : forcer l'adresse affichée dans le QR code, ou le lecteur à piloter.
 #Environment=PUBLIC_URL=http://192.168.1.50:8787
 #Environment=PLAYER_DEVICE_ID=

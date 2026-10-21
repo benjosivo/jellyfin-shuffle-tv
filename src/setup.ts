@@ -1,6 +1,6 @@
 import { normalizeServerUrl, type ConfigManager } from "./config.js";
 import { HttpError } from "./errors.js";
-import { authenticateByName, fetchPublicInfo, JellyfinError } from "./jellyfin/client.js";
+import { authenticateByName, fetchPublicInfo, JellyfinError, revokeToken } from "./jellyfin/client.js";
 import { discoverServers } from "./jellyfin/discovery.js";
 import { explainSessions, findPlayerSession, type PlayerMatchConfig } from "./jellyfin/session.js";
 import type { JfSession } from "./jellyfin/types.js";
@@ -107,7 +107,7 @@ export class Setup {
       throw new HttpError(502, `Aucun serveur Jellyfin à cette adresse (${(err as Error).message}).`);
     }
     if (url !== this.config.serverUrl) {
-      await this.config.clearCredentials();
+      await this.revokeAndClear();
       await this.config.update({ serverUrl: url });
       this.loop.resetConnection();
       log.info(`Serveur Jellyfin : ${url} (${info.ServerName ?? "?"}).`);
@@ -134,9 +134,22 @@ export class Setup {
   }
 
   async logout(): Promise<void> {
-    await this.config.clearCredentials();
+    await this.revokeAndClear();
     this.loop.resetConnection();
     log.info("Déconnecté de Jellyfin.");
+  }
+
+  /** Révoque le jeton côté Jellyfin (au mieux), puis l'efface du disque. */
+  private async revokeAndClear(): Promise<void> {
+    const credentials = await this.config.readCredentials();
+    if (credentials && this.config.serverUrl) {
+      try {
+        await revokeToken(this.config.serverUrl, this.config.identity, credentials.token);
+      } catch (err) {
+        log.warn(`Révocation du jeton impossible (${(err as Error).message}) : il est quand même effacé de ce PC.`);
+      }
+    }
+    await this.config.clearCredentials();
   }
 
   /** Choix manuel du lecteur (DeviceId) ; `null` revient à la détection automatique. */

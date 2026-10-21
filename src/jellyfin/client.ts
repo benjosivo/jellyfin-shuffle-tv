@@ -133,6 +133,22 @@ export async function authenticateByName(
   return result as AuthResult;
 }
 
+/**
+ * Révoque un jeton côté serveur (POST /Sessions/Logout) : l'appareil disparaît de Jellyfin.
+ * Renvoie "already" si le jeton n'était déjà plus valide.
+ */
+export async function revokeToken(serverUrl: string, identity: Identity | undefined, token: string): Promise<"revoked" | "already"> {
+  // Sans identité (jeton d'une autre application, ex. MPV Shim) : en-tête minimal, comme l'ancien script fish.
+  const header = identity ? authorizationHeader(identity, token) : `MediaBrowser Token="${token}"`;
+  const response = await request(serverUrl, "POST", "/Sessions/Logout", header, {
+    timeoutMs: 5000,
+  });
+  await response.body?.cancel();
+  if (response.status === 401 || response.status === 403) return "already";
+  if (!response.ok) throw await failure("POST", "/Sessions/Logout", response);
+  return "revoked";
+}
+
 export class JellyfinClient implements JellyfinApi {
   constructor(private readonly ctx: ClientContext) {}
 

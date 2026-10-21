@@ -4,15 +4,18 @@
   Installation de « Jellyfin en boucle » sous Windows.
 
 .DESCRIPTION
-  Node.js, Jellyfin MPV Shim, build, démarrage automatique au login (tâche planifiée, sans fenêtre),
-  règle de pare-feu pour le téléphone, ouverture de la page QR code au login.
-  Ce script ne supprime rien.
+  Node.js, Jellyfin MPV Shim (installation silencieuse), build, démarrage automatique au login
+  (tâche planifiée, sans fenêtre), règle de pare-feu pour le téléphone, page QR code au login.
+  Tout ce qui est ajouté est noté pour que uninstall.ps1 le retire proprement.
+  Peut être relancé autant de fois que voulu.
 
   Lancement (PowerShell, dans le dossier du projet) :
     powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1
 
 .PARAMETER Port
   Port de l'interface web (8787 par défaut).
+.PARAMETER Yes
+  Ne poser aucune question (sauf le passage d'un réseau public en privé, jamais fait d'office).
 .PARAMETER NoMpvShim
   Ne pas installer Jellyfin MPV Shim.
 .PARAMETER NoOpenUi
@@ -20,40 +23,34 @@
 #>
 param(
   [int]$Port = 8787,
+  [switch]$Yes,
   [switch]$NoMpvShim,
   [switch]$NoOpenUi
 )
 
 $ErrorActionPreference = 'Stop'
-$AppDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
-$TaskName = 'Jellyfin en boucle'
+. (Join-Path $PSScriptRoot 'common.ps1')
 
-function Step($text) { Write-Host "`n==> $text" -ForegroundColor Cyan }
-function Ok($text) { Write-Host "OK  $text" -ForegroundColor Green }
-function Warn($text) { Write-Host "!   $text" -ForegroundColor Yellow }
-function Ask($question) {
+function Ask($question, [switch]$Always) {
+  if ($Yes -and -not $Always) { return $true }
   $answer = Read-Host "$question [O/n]"
   return ($answer -eq '' -or $answer -match '^[oOyY]')
-}
-function Refresh-Path {
-  $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
-  $user = [Environment]::GetEnvironmentVariable('Path', 'User')
-  $env:Path = "$machine;$user"
 }
 
 # --- Élévation (pare-feu et tâche planifiée au login) ---------------------------------
 
-$isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole(
-  [Security.Principal.WindowsBuiltInRole]::Administrator)
-if (-not $isAdmin) {
+if (-not (Test-Admin)) {
   Write-Host "Droits administrateur nécessaires (pare-feu, tâche planifiée) : confirmation demandée par Windows."
   $argsList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Port', $Port)
+  if ($Yes) { $argsList += '-Yes' }
   if ($NoMpvShim) { $argsList += '-NoMpvShim' }
   if ($NoOpenUi) { $argsList += '-NoOpenUi' }
-  Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList -Wait
-  exit
+  $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList -Wait -PassThru
+  exit $process.ExitCode
 }
 $UserId = "$env:USERDOMAIN\$env:USERNAME"
+New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
+Add-Manifest 'port' "$Port"
 
 # --- 1. Node.js ---------------------------------------------------------------------------
 
@@ -67,70 +64,77 @@ if ((Get-NodeMajor) -lt 20) {
   if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
     throw 'winget introuvable : installer Node.js LTS depuis https://nodejs.org puis relancer.'
   }
-  winget install --exact --id OpenJS.NodeJS.LTS --accept-source-agreements --accept-package-agreements
+  & winget install --exact --id OpenJS.NodeJS.LTS --silent --accept-source-agreements --accept-package-agreements
+  if ($LASTEXITCODE -eq 0) { Add-Manifest 'node' 'winget' }
   Refresh-Path
   if ((Get-NodeMajor) -lt 20) { throw 'Node.js toujours introuvable : ouvrir un nouveau PowerShell et relancer.' }
 }
-$NodeExe = (Get-Command node).Source
-Ok "Node.js $(& node --version) ($NodeExe)"
+Ok "Node.js $(& node --version) ($((Get-Command node).Source))"
 
 # --- 2. Jellyfin MPV Shim -------------------------------------------------------------
 
 Step 'Jellyfin MPV Shim'
-function Find-MpvShim {
-  $keys = @(
-    'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*',
-    'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-  )
-  return Get-ItemProperty $keys -ErrorAction SilentlyContinue |
-    Where-Object { $_.DisplayName -like '*MPV Shim*' } | Select-Object -First 1
-}
-function Find-MpvShimShortcut {
-  $menus = @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs")
-  return Get-ChildItem $menus -Recurse -Filter '*.lnk' -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name -like '*MPV Shim*' -and $_.Name -notlike '*uninst*' -and $_.Name -notlike '*désinst*' } |
-    Select-Object -First 1
+function Install-MpvShim {
+  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+  $release = Invoke-RestMethod 'https://api.github.com/repos/jellyfin/jellyfin-mpv-shim/releases/latest' -Headers @{ 'User-Agent' = 'jellyfin-en-boucle' }
+  $installers = @($release.assets | Where-Object { $_.name -match 'installer.*\.exe$' })
+  $arm = $env:PROCESSOR_ARCHITECTURE -eq 'ARM64'
+  $asset = $installers | Where-Object { ($_.name -match 'arm64') -eq $arm } | Select-Object -First 1
+  if (-not $asset) { $asset = $installers | Select-Object -First 1 }
+  if (-not $asset) {
+    Warn "Installeur introuvable dans la release $($release.tag_name) : https://github.com/jellyfin/jellyfin-mpv-shim/releases"
+    return $false
+  }
+  $setup = Join-Path $env:TEMP $asset.name
+  Write-Host "Téléchargement de $($asset.name)…"
+  Invoke-WebRequest $asset.browser_download_url -OutFile $setup -UseBasicParsing
+  # Installeur Inno Setup : installation silencieuse ; repli sur l'installation normale si elle échoue.
+  $process = Start-Process $setup -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/ALLUSERS' -Wait -PassThru
+  if ($process.ExitCode -ne 0) {
+    Warn "Installation silencieuse échouée (code $($process.ExitCode)) : installeur ouvert normalement."
+    Start-Process $setup -Wait
+  }
+  Remove-Item $setup -Force -ErrorAction SilentlyContinue
+  return [bool](Find-MpvShim)
 }
 
 $installed = Find-MpvShim
 if ($installed) {
   Ok "Déjà installé : $($installed.DisplayName)"
-} elseif (-not $NoMpvShim -and (Ask "Jellyfin MPV Shim n'est pas installé. Le télécharger et l'installer ?")) {
-  [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-  $release = Invoke-RestMethod 'https://api.github.com/repos/jellyfin/jellyfin-mpv-shim/releases/latest' -Headers @{ 'User-Agent' = 'jellyfin-en-boucle' }
-  $asset = $release.assets | Where-Object { $_.name -match '\.exe$' -and $_.name -match 'setup|install' } | Select-Object -First 1
-  if (-not $asset) { $asset = $release.assets | Where-Object { $_.name -match '\.exe$' } | Select-Object -First 1 }
-  if (-not $asset) {
-    Warn "Installeur introuvable dans la release $($release.tag_name) : https://github.com/jellyfin/jellyfin-mpv-shim/releases"
+} elseif (-not $NoMpvShim -and (Ask "Jellyfin MPV Shim n'est pas installé. L'installer ?")) {
+  if (Install-MpvShim) {
+    Add-Manifest 'mpv-shim' 'inno'
+    Ok 'Jellyfin MPV Shim installé.'
   } else {
-    $setup = Join-Path $env:TEMP $asset.name
-    Write-Host "Téléchargement de $($asset.name)…"
-    Invoke-WebRequest $asset.browser_download_url -OutFile $setup -UseBasicParsing
-    Write-Host "Suivre l'installeur qui s'ouvre…"
-    Start-Process $setup -Wait
-    if (Find-MpvShim) { Ok 'Jellyfin MPV Shim installé.' } else { Warn "Installation non détectée : vérifier qu'elle s'est bien terminée." }
+    Warn "Installation non détectée : vérifier qu'elle s'est bien terminée."
   }
 } else {
   Warn 'MPV Shim non installé : la lecture ne pourra pas démarrer sans lui.'
 }
 
-# Démarrage automatique de MPV Shim (raccourci dans le dossier Démarrage).
-$startup = [Environment]::GetFolderPath('Startup')
 $shortcut = Find-MpvShimShortcut
 if ($shortcut) {
-  $existing = Get-ChildItem $startup -Filter '*MPV Shim*.lnk' -ErrorAction SilentlyContinue
-  if ($existing) {
-    Ok 'MPV Shim démarre déjà automatiquement.'
+  # Démarrage automatique de MPV Shim (raccourci dans le dossier Démarrage), s'il n'est pas déjà prévu.
+  $startupLink = Join-Path $StartupDir $shortcut.Name
+  $existing = Get-ChildItem $StartupDir -Filter '*MPV Shim*.lnk' -ErrorAction SilentlyContinue
+  if (-not $existing -or (Test-Manifest 'file' $startupLink)) {
+    Copy-Item $shortcut.FullName $startupLink -Force
+    Add-Manifest 'file' $startupLink
+    Ok 'MPV Shim démarre automatiquement.'
   } else {
-    Copy-Item $shortcut.FullName (Join-Path $startup $shortcut.Name)
-    Ok 'Démarrage automatique de MPV Shim ajouté.'
+    Ok 'MPV Shim démarre déjà automatiquement.'
+  }
+  # Premier lancement, pour pouvoir le connecter tout de suite (assistant de l'interface).
+  if (-not (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Jellyfin MPV Shim*' })) {
+    Start-Process $shortcut.FullName
   }
 }
 
 # --- 3. Build --------------------------------------------------------------------------------
 
 Step 'Installation des dépendances et build'
+# Une version précédente peut tourner et verrouiller des fichiers : on l'arrête d'abord.
+Stop-App
 Push-Location $AppDir
 try {
   & npm ci --no-audit --no-fund
@@ -153,25 +157,25 @@ $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoi
 $principal = New-ScheduledTaskPrincipal -UserId $UserId -LogonType Interactive -RunLevel Limited
 Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -Principal $principal `
   -Description "Jellyfin en boucle : pilotage de MPV Shim + interface web (port $Port)" -Force | Out-Null
-# Relance propre si une ancienne version tourne déjà.
-Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
-  Where-Object { $_.CommandLine -like "*$AppDir*dist*server*index.js*" } |
-  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+Add-Manifest 'task' $TaskName
 Start-ScheduledTask -TaskName $TaskName
 Ok "Tâche planifiée « $TaskName » créée et lancée."
 
 # --- 5. Pare-feu ------------------------------------------------------------------------------
 
 Step 'Pare-feu (accès depuis le téléphone)'
-Get-NetFirewallRule -DisplayName $TaskName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-New-NetFirewallRule -DisplayName $TaskName -Direction Inbound -Protocol TCP -LocalPort $Port `
+Get-NetFirewallRule -DisplayName $FirewallRuleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName $FirewallRuleName -Direction Inbound -Protocol TCP -LocalPort $Port `
   -Action Allow -Profile Private, Domain | Out-Null
+Add-Manifest 'firewall' $FirewallRuleName
 Ok "Port $Port ouvert sur les réseaux privés."
 $public = Get-NetConnectionProfile -ErrorAction SilentlyContinue | Where-Object { $_.NetworkCategory -eq 'Public' }
 foreach ($net in $public) {
   Warn "Le réseau « $($net.Name) » est en mode Public : le téléphone ne pourra pas joindre ce PC."
-  if (Ask "Passer « $($net.Name) » en réseau privé (à faire seulement pour le réseau de la maison) ?") {
+  # Toujours demandé, même avec -Yes : à ne faire que pour le réseau de la maison.
+  if (Ask "Passer « $($net.Name) » en réseau privé (seulement si c'est le réseau de la maison) ?" -Always) {
     Set-NetConnectionProfile -InterfaceIndex $net.InterfaceIndex -NetworkCategory Private
+    Add-Manifest 'network' $net.Name
     Ok "« $($net.Name) » est maintenant un réseau privé."
   }
 }
@@ -179,25 +183,25 @@ foreach ($net in $public) {
 # --- 6. Page QR code à l'ouverture de session ----------------------------------------------
 
 Step 'Page QR code au login'
-$uiShortcut = Join-Path $startup 'Jellyfin en boucle (QR code).lnk'
 if ($NoOpenUi) {
+  Remove-Item $UiShortcut -Force -ErrorAction SilentlyContinue
   Ok 'Ignorée (-NoOpenUi).'
 } else {
   $shell = New-Object -ComObject WScript.Shell
-  $link = $shell.CreateShortcut($uiShortcut)
+  $link = $shell.CreateShortcut($UiShortcut)
   $link.TargetPath = 'powershell.exe'
   $link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AppDir\deploy\windows\open-ui.ps1`" -Port $Port"
   $link.WindowStyle = 7
   $link.Save()
-  Ok "Ajoutée : $uiShortcut (supprimer ce raccourci pour la désactiver)."
+  Add-Manifest 'file' $UiShortcut
+  Ok "Ajoutée : $UiShortcut"
 }
 
 # --- Fin ----------------------------------------------------------------------------------------
 
 Step 'Terminé'
-Write-Host "Interface : http://localhost:$Port/  (le QR code pour le téléphone s'y affiche)"
-Write-Host "Journal   : $env:APPDATA\jellyfin-office\service.log"
-if (Ask "Ouvrir l'interface maintenant ?") {
-  & (Join-Path $AppDir 'deploy\windows\open-ui.ps1') -Port $Port
-}
-Read-Host 'Appuyer sur Entrée pour fermer'
+Write-Host "Interface    : http://localhost:$Port/  (le QR code pour le téléphone s'y affiche)"
+Write-Host "Journal      : $ConfigDir\service.log"
+Write-Host "Désinstaller : powershell -ExecutionPolicy Bypass -File `"$AppDir\deploy\windows\uninstall.ps1`""
+if (-not $NoOpenUi) { & (Join-Path $AppDir 'deploy\windows\open-ui.ps1') -Port $Port }
+if (-not $Yes) { Read-Host 'Appuyer sur Entrée pour fermer' | Out-Null }
