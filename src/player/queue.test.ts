@@ -1,0 +1,160 @@
+import { describe, expect, it } from "vitest";
+import type { SeriesState } from "../shared/types.js";
+import * as q from "./queue.js";
+
+const ids = (n: number) => Array.from({ length: n }, (_, i) => `ep${i + 1}`);
+const settings = { historyRatio: 0.95, queueSize: 5 };
+
+function seeded(seed = 42) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) % 2 ** 32;
+    return s / 2 ** 32;
+  };
+}
+
+function ctx(n: number, extra: Partial<q.QueueContext> = {}): q.QueueContext {
+  let t = 1000;
+  return { episodeIds: ids(n), settings, random: seeded(), now: () => t++, ...extra };
+}
+
+const empty = (): SeriesState => ({ history: [], queue: [] });
+
+describe("limits", () => {
+  it("garde ~95 % pour une série de 200 épisodes (The Office)", () => {
+    expect(q.limits(200, settings)).toEqual({ queueSize: 5, historyLimit: 190 });
+  });
+
+  it("laisse toujours au moins un épisode tirable sur une petite série", () => {
+    expect(q.limits(10, settings)).toEqual({ queueSize: 5, historyLimit: 4 });
+    expect(q.limits(3, settings)).toEqual({ queueSize: 2, historyLimit: 0 });
+    expect(q.limits(1, settings)).toEqual({ queueSize: 0, historyLimit: 0 });
+    expect(q.limits(0, settings)).toEqual({ queueSize: 0, historyLimit: 0 });
+  });
+});
+
+describe("file d'attente", () => {
+  it("remplit la file sans doublon ni épisode de l'historique", () => {
+    const c = ctx(20);
+    const s: SeriesState = { history: [{ id: "ep1", at: 1 }, { id: "ep2", at: 2 }], queue: [] };
+    q.refill(s, c);
+    expect(s.queue).toHaveLength(5);
+    expect(new Set(s.queue).size).toBe(5);
+    expect(s.queue).not.toContain("ep1");
+    expect(s.queue).not.toContain("ep2");
+  });
+
+  it("takeNext prend la tête de file, l'ajoute à l'historique et recomplète", () => {
+    const c = ctx(20);
+    const s = empty();
+    q.refill(s, c);
+    const head = s.queue[0];
+    expect(q.takeNext(s, c)).toBe(head);
+    expect(s.history.at(-1)?.id).toBe(head);
+    expect(s.queue).toHaveLength(5);
+    expect(s.queue).not.toContain(head);
+  });
+
+  it("ne rejoue rien avant d'avoir épuisé la série (hors marge de la file)", () => {
+    const c = ctx(200);
+    const s = empty();
+    const played: string[] = [];
+    for (let i = 0; i < 190; i++) played.push(q.takeNext(s, c)!);
+    expect(new Set(played).size).toBe(190);
+    expect(s.history).toHaveLength(190);
+  });
+
+  it("tourne indéfiniment sur une petite série sans vider l'historique en boucle", () => {
+    const c = ctx(8);
+    const s = empty();
+    let previous: string | undefined;
+    for (let i = 0; i < 100; i++) {
+      const id = q.takeNext(s, c)!;
+      expect(id).toBeDefined();
+      expect(id).not.toBe(previous);
+      previous = id;
+      const lim = q.limits(8, settings);
+      expect(s.history.length).toBeLessThanOrEqual(lim.historyLimit);
+      const inQueueAndHistory = s.queue.filter((x) => s.history.some((h) => h.id === x));
+      expect(inQueueAndHistory).toEqual([]);
+    }
+  });
+
+  it("fonctionne avec une série d'un seul épisode", () => {
+    const c = ctx(1);
+    const s = empty();
+    expect(q.takeNext(s, c)).toBe("ep1");
+    expect(q.takeNext(s, c)).toBe("ep1");
+  });
+
+  it("vide l'historique si tout est exclu (comportement du script fish)", () => {
+    const c = ctx(3, { settings: { historyRatio: 1, queueSize: 0 } });
+    const s: SeriesState = { history: ids(3).map((id, at) => ({ id, at })), queue: [] };
+    const id = q.draw(s, c);
+    expect(id).toBeDefined();
+    expect(s.history).toEqual([]);
+  });
+
+  it("takeSpecific retire l'épisode de la file et compte dans l'historique", () => {
+    const c = ctx(20);
+    const s = empty();
+    q.refill(s, c);
+    const third = s.queue[2]!;
+    q.takeSpecific(s, third, c);
+    expect(s.queue).not.toContain(third);
+    expect(s.queue).toHaveLength(5);
+    expect(s.history.at(-1)?.id).toBe(third);
+  });
+
+  it("undoTake remet l'épisode en tête de file", () => {
+    const c = ctx(20);
+    const s = empty();
+    q.refill(s, c);
+    const id = q.takeNext(s, c)!;
+    q.undoTake(s, id, c);
+    expect(s.queue[0]).toBe(id);
+    expect(s.history.find((h) => h.id === id)).toBeUndefined();
+    expect(s.queue.length).toBeLessThanOrEqual(5);
+  });
+
+  it("removeFromQueue recomplète sans reprendre l'épisode retiré", () => {
+    const c = ctx(20);
+    const s = empty();
+    q.refill(s, c);
+    const removed = s.queue[1]!;
+    expect(q.removeFromQueue(s, removed, c)).toBe(true);
+    expect(s.queue).toHaveLength(5);
+    expect(s.queue).not.toContain(removed);
+    expect(q.removeFromQueue(s, "inconnu", c)).toBe(false);
+  });
+
+  it("reorder n'accepte qu'une permutation exacte", () => {
+    const s: SeriesState = { history: [], queue: ["a", "b", "c"] };
+    expect(q.reorder(s, ["c", "a"])).toBe(false);
+    expect(q.reorder(s, ["c", "a", "a"])).toBe(false);
+    expect(q.reorder(s, ["c", "a", "x"])).toBe(false);
+    expect(q.reorder(s, ["c", "a", "b"])).toBe(true);
+    expect(s.queue).toEqual(["c", "a", "b"]);
+  });
+
+  it("reroll évite les épisodes de l'ancienne file quand c'est possible", () => {
+    const c = ctx(50);
+    const s = empty();
+    q.refill(s, c);
+    const before = [...s.queue];
+    q.reroll(s, c);
+    expect(s.queue).toHaveLength(5);
+    expect(s.queue.filter((id) => before.includes(id))).toEqual([]);
+  });
+
+  it("sanitize retire les épisodes disparus et les doublons", () => {
+    const c = ctx(10);
+    const s: SeriesState = {
+      history: [{ id: "ep1", at: 1 }, { id: "zz", at: 2 }, { id: "ep1", at: 3 }],
+      queue: ["ep1", "ep2", "ep2", "old"],
+    };
+    q.sanitize(s, c);
+    expect(s.history).toEqual([{ id: "ep1", at: 3 }]);
+    expect(s.queue).toEqual(["ep2"]);
+  });
+});
