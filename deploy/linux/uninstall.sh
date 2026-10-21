@@ -40,7 +40,7 @@ mpv_shim_via="$(manifest_values mpv-shim | head -n1)"
 
 step "Désinstallation de Jellyfin en boucle"
 echo "Seront supprimés :"
-echo "  - le service jellyfin-office et ses démarrages automatiques"
+echo "  - le service jellyfin-office, l'icône d'état et les démarrages automatiques"
 echo "  - $CONFIG_DIR (jeton Jellyfin, identifiants, historique, journaux), après révocation du jeton"
 echo "  - node_modules et dist dans $APP_DIR"
 [[ $REMOVE_FOLDER -eq 1 ]] && echo "  - le dossier $APP_DIR lui-même"
@@ -90,8 +90,9 @@ ok "Service arrêté et supprimé."
 
 # --- 3. Fichiers ajoutés (démarrages automatiques…) -----------------------------------------
 
-step "Démarrages automatiques"
-rm -f "$AUTOSTART_DIR/jellyfin-en-boucle.desktop"
+step "Démarrages automatiques et icône d'état"
+pkill -f "$APP_DIR/dist/server/tray/linux.js" >/dev/null 2>&1 || true
+rm -f "$AUTOSTART_DIR/jellyfin-en-boucle.desktop" "$AUTOSTART_DIR/jellyfin-en-boucle-tray.desktop"
 while IFS= read -r file; do
   [[ -n "$file" ]] && rm -f "$file"
 done < <(manifest_values file)

@@ -22,13 +22,16 @@
   Ne pas ouvrir la page QR code à chaque ouverture de session.
 .PARAMETER NoShortcuts
   Ne pas créer les raccourcis « Jellyfin en boucle » (menu Démarrer et bureau).
+.PARAMETER NoTray
+  Ne pas afficher l'icône d'état près de l'horloge.
 #>
 param(
   [int]$Port = 8787,
   [switch]$Yes,
   [switch]$NoMpvShim,
   [switch]$NoOpenUi,
-  [switch]$NoShortcuts
+  [switch]$NoShortcuts,
+  [switch]$NoTray
 )
 
 $ErrorActionPreference = 'Stop'
@@ -49,6 +52,7 @@ if (-not (Test-Admin)) {
   if ($NoMpvShim) { $argsList += '-NoMpvShim' }
   if ($NoOpenUi) { $argsList += '-NoOpenUi' }
   if ($NoShortcuts) { $argsList += '-NoShortcuts' }
+  if ($NoTray) { $argsList += '-NoTray' }
   $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList -Wait -PassThru
   exit $process.ExitCode
 }
@@ -130,7 +134,7 @@ if ($shortcut) {
   }
   # Premier lancement, pour pouvoir le connecter tout de suite (assistant de l'interface).
   if (-not (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*Jellyfin MPV Shim*' })) {
-    Start-Process $shortcut.FullName
+    Start-AsUser $shortcut.FullName
   }
 }
 
@@ -191,7 +195,7 @@ if ($NoOpenUi) {
   Remove-Item $UiShortcut -Force -ErrorAction SilentlyContinue
   Ok 'Ignorée (-NoOpenUi).'
 } else {
-  New-AppShortcut $UiShortcut "-Port $Port" 'Affiche le QR code pour piloter la lecture depuis le téléphone'
+  New-AppShortcut $UiShortcut 'open-ui.ps1' "-Port $Port" 'Affiche le QR code pour piloter la lecture depuis le téléphone'
   Add-Manifest 'file' $UiShortcut
   Ok "Ajoutée : $UiShortcut"
 }
@@ -205,10 +209,25 @@ if ($NoShortcuts) {
 } else {
   # Relance le serveur s'il est arrêté, puis ouvre l'interface avec le QR code.
   foreach ($shortcutPath in @($StartMenuShortcut, $DesktopShortcut)) {
-    New-AppShortcut $shortcutPath "-Port $Port -StartServer" "Démarre Jellyfin en boucle et ouvre l'interface"
+    New-AppShortcut $shortcutPath 'open-ui.ps1' "-Port $Port -StartServer" "Démarre Jellyfin en boucle et ouvre l'interface"
     Add-Manifest 'file' $shortcutPath
   }
   Ok 'Ajoutés dans le menu Démarrer et sur le bureau.'
+}
+
+# --- 8. Icône d'état près de l'horloge -------------------------------------------------------
+
+Step "Icône d'état (zone de notification)"
+Stop-Tray
+if ($NoTray) {
+  Remove-Item $TrayShortcut -Force -ErrorAction SilentlyContinue
+  Ok 'Ignorée (-NoTray).'
+} else {
+  New-AppShortcut $TrayShortcut 'tray.ps1' "-Port $Port" "Icône d'état de Jellyfin en boucle"
+  Add-Manifest 'file' $TrayShortcut
+  Start-AsUser $TrayShortcut
+  Ok "Affichée près de l'horloge (vert = lecture, orange = problème, rouge = arrêté)."
+  Write-Host "    Si elle est cachée : flèche ^ près de l'horloge, puis la faire glisser dans la barre des tâches."
 }
 
 # --- Fin ----------------------------------------------------------------------------------------
@@ -218,5 +237,5 @@ Write-Host "Interface    : http://localhost:$Port/  (le QR code pour le téléph
 Write-Host "Relancer     : raccourci « Jellyfin en boucle » (menu Démarrer ou bureau)"
 Write-Host "Journal      : $ConfigDir\service.log"
 Write-Host "Désinstaller : powershell -ExecutionPolicy Bypass -File `"$AppDir\deploy\windows\uninstall.ps1`""
-if (-not $NoOpenUi) { & (Join-Path $AppDir 'deploy\windows\open-ui.ps1') -Port $Port }
+if (-not $NoOpenUi) { Start-AsUser $UiShortcut }
 if (-not $Yes) { Read-Host 'Appuyer sur Entrée pour fermer' | Out-Null }

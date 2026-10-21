@@ -33,9 +33,10 @@ Le script (à lancer sans `sudo`, il le demande au besoin) :
 4. installe et démarre le service `~/.config/systemd/user/jellyfin-office.service` (`Restart=on-failure`) ;
 5. ouvre le port 8787 si `ufw` ou `firewalld` est actif ;
 6. ajoute l'ouverture de la page QR code au login (`~/.config/autostart/jellyfin-en-boucle.desktop`) ;
-7. signale tout lancement automatique de l'ancien script fish **sans rien supprimer** : à désactiver soi-même, sinon les deux pilotent MPV Shim en même temps.
+7. affiche l'**icône d'état** près de l'horloge, et la relance à chaque session ;
+8. signale tout lancement automatique de l'ancien script fish **sans rien supprimer** : à désactiver soi-même, sinon les deux pilotent MPV Shim en même temps.
 
-Options : `--ask` (confirmer chaque étape ; propose aussi le démarrage sans session ouverte, « linger »), `--no-mpv-shim`, `--no-open-ui`. Port différent : `PORT=8080 deploy/linux/install.sh`.
+Options : `--ask` (confirmer chaque étape ; propose aussi le démarrage sans session ouverte, « linger »), `--no-mpv-shim`, `--no-open-ui`, `--no-tray`. Port différent : `PORT=8080 deploy/linux/install.sh`.
 
 ### Windows
 
@@ -53,16 +54,33 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 4. crée la tâche planifiée « Jellyfin en boucle » (au login, sans fenêtre, relance automatique en cas de plantage) ;
 5. ouvre le port 8787 sur les réseaux privés. Si le réseau est en « public », il **demande toujours** avant de le passer en « privé », même avec `-Yes` : à ne faire que pour le réseau de la maison ;
 6. ajoute l'ouverture de la page QR code au login (raccourci dans le dossier Démarrage) ;
-7. crée le raccourci **« Jellyfin en boucle »** dans le menu Démarrer et sur le bureau.
+7. crée le raccourci **« Jellyfin en boucle »** dans le menu Démarrer et sur le bureau ;
+8. affiche l'**icône d'état** près de l'horloge, et la relance à chaque session.
 
-Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-NoTray`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
 
 ### Démarrer / relancer
 
 Rien à lancer à la main en temps normal. À la fin de l'installation, puis à chaque ouverture de session :
 - le serveur démarre (service systemd sous Linux, tâche planifiée sous Windows, sans fenêtre) ;
 - MPV Shim démarre ;
-- le navigateur s'ouvre sur la page du QR code.
+- le navigateur s'ouvre sur la page du QR code ;
+- l'icône d'état apparaît près de l'horloge.
+
+**Savoir si ça tourne** : l'icône près de l'horloge (zone de notification) indique l'état en permanence.
+
+| Couleur | Symbole | État |
+|---|---|---|
+| vert | ▶ | lecture en cours (l'infobulle donne l'épisode) |
+| bleu | ❚❚ | en pause |
+| gris | ■ | en attente (entre deux épisodes, ou mode auto désactivé) |
+| orange | ! | problème : Jellyfin injoignable, MPV Shim introuvable, configuration à faire… |
+| rouge | ✕ | serveur arrêté |
+
+- Clic sur l'icône : ouvrir l'interface ; si le serveur est arrêté, il est d'abord relancé.
+- Clic droit : menu (QR code, pause / reprise, épisode suivant, redémarrer le serveur, masquer l'icône).
+- Sous Windows, si l'icône est cachée : flèche `^` près de l'horloge, puis la faire glisser dans la barre des tâches.
+- Sous Linux, l'icône utilise le protocole standard des zones de notification. KDE Plasma, Xfce et Cinnamon l'affichent directement. GNOME l'affiche seulement avec l'extension « AppIndicator » : paquet `gnome-shell-extension-appindicator`, activée par défaut sur Ubuntu.
 
 Pour y revenir plus tard :
 - **Windows** : raccourci **« Jellyfin en boucle »** (menu Démarrer ou bureau). Il relance le serveur s'il est arrêté, puis ouvre l'interface. Si le serveur ne répond toujours pas, une fenêtre indique où trouver le journal.
@@ -82,7 +100,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall.ps1    # Windo
 Par défaut, tout est retiré, secrets compris :
 
 1. **les jetons Jellyfin sont révoqués côté serveur** : celui de l'application et, si MPV Shim est retiré, les siens. Le PC disparaît de la liste des appareils de Jellyfin. Si le serveur est injoignable, les jetons sont quand même effacés du PC ;
-2. service / tâche planifiée, démarrages automatiques, raccourcis, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
+2. service / tâche planifiée, icône d'état, démarrages automatiques, raccourcis, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
 3. **MPV Shim et sa configuration, Node.js et les paquets système**, uniquement s'ils ont été installés par l'installation. Ce qui était déjà là avant est laissé en place ;
 4. tout le dossier de configuration : jeton, identifiants, `config.json`, historique, journaux, ancien `history` du script fish ;
 5. `node_modules` et `dist`.
@@ -211,11 +229,12 @@ src/
   store.ts              state.json (écriture atomique, migration)
   setup.ts              assistant de configuration
   revoke.ts, cli/       révocation des jetons Jellyfin (désinstallation, déconnexion)
+  tray/                 icône d'état : résumé (GET /api/tray), dessin, version Linux (D-Bus)
   api/routes.ts         API REST
   api/events.ts         SSE
 web/                    front React (Vite)
 scripts/spike.ts        vérification de MPV Shim
-deploy/linux, deploy/windows   install / uninstall (+ fonctions communes)
+deploy/linux, deploy/windows   install / uninstall, icône d'état Windows (tray.ps1)
 ```
 
 ### API
@@ -242,5 +261,6 @@ GET    /api/image/:itemId         proxy des images Jellyfin
 GET    /api/access, /api/qr.svg   adresses et QR code d'accès
 GET    /api/setup, /api/setup/discover
 POST   /api/setup/server | login | logout | player
+GET    /api/tray                  résumé pour l'icône d'état
 GET    /api/logs, /api/debug/sessions, /api/health
 ```

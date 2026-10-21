@@ -8,9 +8,10 @@ param(
 
 $url = "http://localhost:$Port"
 
+# Le serveur écoute en IPv4 : la vérification vise 127.0.0.1 (localhost peut désigner ::1).
 function Test-Health {
   try {
-    Invoke-WebRequest "$url/api/health" -UseBasicParsing -TimeoutSec 2 | Out-Null
+    Invoke-WebRequest "http://127.0.0.1:$Port/api/health" -UseBasicParsing -TimeoutSec 2 | Out-Null
     return $true
   } catch {
     return $false

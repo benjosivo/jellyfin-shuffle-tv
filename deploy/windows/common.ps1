@@ -8,6 +8,7 @@ $StartupDir = [Environment]::GetFolderPath('Startup')
 $UiShortcut = Join-Path $StartupDir 'Jellyfin en boucle (QR code).lnk'
 $StartMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Jellyfin en boucle.lnk'
 $DesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Jellyfin en boucle.lnk'
+$TrayShortcut = Join-Path $StartupDir 'Jellyfin en boucle (icône).lnk'
 $IconFile = Join-Path $AppDir 'deploy\windows\icon.ico'
 $MpvShimConfigDir = Join-Path $env:APPDATA 'jellyfin-mpv-shim'
 
@@ -72,18 +73,29 @@ function Stop-App {
   Start-Sleep -Milliseconds 500
 }
 
-# Raccourci qui lance open-ui.ps1 sans fenêtre (page QR au login, menu Démarrer, bureau).
-function New-AppShortcut([string]$path, [string]$arguments, [string]$description) {
+# Raccourci qui lance un script PowerShell de deploy\windows sans aucune fenêtre (via launch-hidden.vbs).
+function New-AppShortcut([string]$path, [string]$script, [string]$arguments, [string]$description) {
   New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
   $shell = New-Object -ComObject WScript.Shell
   $link = $shell.CreateShortcut($path)
-  $link.TargetPath = 'powershell.exe'
-  $link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AppDir\deploy\windows\open-ui.ps1`" $arguments"
+  $link.TargetPath = Join-Path $env:SystemRoot 'System32\wscript.exe'
+  $link.Arguments = "`"$AppDir\deploy\windows\launch-hidden.vbs`" $script $arguments"
   $link.WorkingDirectory = $AppDir
   $link.Description = $description
-  $link.WindowStyle = 7
   if (Test-Path $IconFile) { $link.IconLocation = "$IconFile,0" }
   $link.Save()
+}
+
+# Ouvre un raccourci avec les droits normaux de l'utilisateur (via l'Explorateur), même depuis
+# un script lancé en administrateur : le navigateur, l'icône et MPV Shim ne tournent pas en admin.
+function Start-AsUser([string]$shortcutPath) {
+  if (Test-Path $shortcutPath) { Start-Process explorer.exe -ArgumentList "`"$shortcutPath`"" }
+}
+
+function Stop-Tray {
+  Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains('tray.ps1') -and $_.CommandLine.Contains($AppDir) } |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
 function Refresh-Path {

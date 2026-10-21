@@ -74,10 +74,11 @@ if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $cli)) {
 
 Step 'Démarrage automatique'
 Stop-App
+Stop-Tray
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Remove-Item $UiShortcut, $StartMenuShortcut, $DesktopShortcut -Force -ErrorAction SilentlyContinue
+Remove-Item $UiShortcut, $StartMenuShortcut, $DesktopShortcut, $TrayShortcut -Force -ErrorAction SilentlyContinue
 foreach ($file in Get-ManifestValues 'file') { Remove-Item $file -Force -ErrorAction SilentlyContinue }
-Ok 'Tâche planifiée et raccourcis supprimés.'
+Ok "Tâche planifiée, icône d'état et raccourcis supprimés."
 
 # --- 3. Pare-feu et réseau ------------------------------------------------------------------------
 

@@ -139,3 +139,17 @@ export interface AccessInfo {
   primary: string | null;
   isLocal: boolean;
 }
+
+/** Résumé pour l'icône de la zone de notification ("stopped" est déduit par l'icône elle-même). */
+export type TrayLevel = "playing" | "paused" | "idle" | "warning" | "stopped";
+
+export interface TraySummary {
+  level: TrayLevel;
+  /** Une ligne courte (infobulle, titre du menu). */
+  title: string;
+  /** Détail éventuel (épisode en cours, cause du problème). */
+  detail: string;
+  canPause: boolean;
+  canResume: boolean;
+  canSkip: boolean;
+}

@@ -11,6 +11,7 @@ import type { PlayerLoop } from "../player/loop.js";
 import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
 import type { AccessInfo, Settings } from "../shared/types.js";
+import { traySummary } from "../tray/status.js";
 import { createEventsHandler } from "./events.js";
 
 export interface ApiDeps {
@@ -38,6 +39,10 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
   });
 
   api.get("/events", createEventsHandler(loop));
+
+  api.get("/tray", (_req, res) => {
+    res.json(traySummary(loop.snapshot()));
+  });
 
   api.get("/logs", (req, res) => {
     res.json(log.recent(intQuery(req, "limit", 100, 1, 200)));

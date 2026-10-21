@@ -3,10 +3,10 @@
 #
 #   deploy/linux/install.sh                 installe tout sans poser de question (sudo est demandé si besoin)
 #   deploy/linux/install.sh --ask           demande confirmation à chaque étape
-#   deploy/linux/install.sh --no-mpv-shim --no-open-ui
+#   deploy/linux/install.sh --no-mpv-shim --no-open-ui --no-tray
 #
 # Étapes : Node.js, Jellyfin MPV Shim, build, service systemd utilisateur, pare-feu,
-# ouverture de la page QR code au login, repérage de l'ancien script fish.
+# ouverture de la page QR code au login, icône d'état, repérage de l'ancien script fish.
 # Tout ce qui est ajouté est noté pour que deploy/linux/uninstall.sh le retire proprement.
 # Peut être relancé autant de fois que voulu.
 
@@ -18,12 +18,14 @@ PORT="${PORT:-8787}"
 ASSUME_YES=1
 INSTALL_MPV_SHIM=1
 OPEN_UI=1
+TRAY=1
 for arg in "$@"; do
   case "$arg" in
     --ask) ASSUME_YES=0 ;;
     -y|--yes) ASSUME_YES=1 ;;
     --no-mpv-shim) INSTALL_MPV_SHIM=0 ;;
     --no-open-ui) OPEN_UI=0 ;;
+    --no-tray) TRAY=0 ;;
     -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) echo "Option inconnue : $arg" >&2; exit 2 ;;
   esac
@@ -250,7 +252,36 @@ else
   ok "Ignorée (--no-open-ui)."
 fi
 
-# --- 7. Ancien script fish ---------------------------------------------------------------
+# --- 7. Icône d'état dans la zone de notification ---------------------------------------------
+
+step "Icône d'état (zone de notification)"
+tray_script="$APP_DIR/dist/server/tray/linux.js"
+tray_desktop="$AUTOSTART_DIR/jellyfin-en-boucle-tray.desktop"
+pkill -f "$tray_script" >/dev/null 2>&1 || true
+if [[ $TRAY -eq 1 ]]; then
+  mkdir -p "$AUTOSTART_DIR"
+  cat > "$tray_desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Jellyfin en boucle (icône)
+Comment=Icône d'état près de l'horloge : vert = lecture, orange = problème, rouge = arrêté
+Exec=$NODE_BIN $tray_script --port $PORT
+X-GNOME-Autostart-enabled=true
+EOF
+  manifest_add "file $tray_desktop"
+  if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then
+    (nohup "$NODE_BIN" "$tray_script" --port "$PORT" >/dev/null 2>&1 &)
+  fi
+  ok "Affichée près de l'horloge (vert = lecture, orange = problème, rouge = arrêté)."
+  if [[ "${XDG_CURRENT_DESKTOP:-}" == *GNOME* ]]; then
+    warn "GNOME n'affiche ces icônes qu'avec l'extension « AppIndicator » (paquet gnome-shell-extension-appindicator)."
+  fi
+else
+  rm -f "$tray_desktop"
+  ok "Ignorée (--no-tray)."
+fi
+
+# --- 8. Ancien script fish ---------------------------------------------------------------
 
 step "Ancien script fish"
 found=0
