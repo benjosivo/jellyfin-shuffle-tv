@@ -6,6 +6,9 @@ $TaskName = 'Jellyfin en boucle'
 $FirewallRuleName = 'Jellyfin en boucle'
 $StartupDir = [Environment]::GetFolderPath('Startup')
 $UiShortcut = Join-Path $StartupDir 'Jellyfin en boucle (QR code).lnk'
+$StartMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Jellyfin en boucle.lnk'
+$DesktopShortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Jellyfin en boucle.lnk'
+$IconFile = Join-Path $AppDir 'deploy\windows\icon.ico'
 $MpvShimConfigDir = Join-Path $env:APPDATA 'jellyfin-mpv-shim'
 
 # Manifeste : ce que l'installation a réellement ajouté (une entrée « type valeur » par ligne),
@@ -67,6 +70,20 @@ function Stop-App {
     } |
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Milliseconds 500
+}
+
+# Raccourci qui lance open-ui.ps1 sans fenêtre (page QR au login, menu Démarrer, bureau).
+function New-AppShortcut([string]$path, [string]$arguments, [string]$description) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $path) | Out-Null
+  $shell = New-Object -ComObject WScript.Shell
+  $link = $shell.CreateShortcut($path)
+  $link.TargetPath = 'powershell.exe'
+  $link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AppDir\deploy\windows\open-ui.ps1`" $arguments"
+  $link.WorkingDirectory = $AppDir
+  $link.Description = $description
+  $link.WindowStyle = 7
+  if (Test-Path $IconFile) { $link.IconLocation = "$IconFile,0" }
+  $link.Save()
 }
 
 function Refresh-Path {

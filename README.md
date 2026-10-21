@@ -52,9 +52,25 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 3. compile l'application ;
 4. crée la tâche planifiée « Jellyfin en boucle » (au login, sans fenêtre, relance automatique en cas de plantage) ;
 5. ouvre le port 8787 sur les réseaux privés. Si le réseau est en « public », il **demande toujours** avant de le passer en « privé », même avec `-Yes` : à ne faire que pour le réseau de la maison ;
-6. ajoute l'ouverture de la page QR code au login (raccourci dans le dossier Démarrage).
+6. ajoute l'ouverture de la page QR code au login (raccourci dans le dossier Démarrage) ;
+7. crée le raccourci **« Jellyfin en boucle »** dans le menu Démarrer et sur le bureau.
 
-Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+
+### Démarrer / relancer
+
+Rien à lancer à la main en temps normal. À la fin de l'installation, puis à chaque ouverture de session :
+- le serveur démarre (service systemd sous Linux, tâche planifiée sous Windows, sans fenêtre) ;
+- MPV Shim démarre ;
+- le navigateur s'ouvre sur la page du QR code.
+
+Pour y revenir plus tard :
+- **Windows** : raccourci **« Jellyfin en boucle »** (menu Démarrer ou bureau). Il relance le serveur s'il est arrêté, puis ouvre l'interface. Si le serveur ne répond toujours pas, une fenêtre indique où trouver le journal.
+- **Partout** : ouvrir `http://localhost:8787` sur le PC, ou scanner le QR code avec le téléphone.
+- **En dernier recours** :
+  - Linux : `systemctl --user restart jellyfin-office` ;
+  - Windows (PowerShell) : `Start-ScheduledTask -TaskName "Jellyfin en boucle"`.
+- **Journal** : `journalctl --user -u jellyfin-office -f` (Linux), `%APPDATA%\jellyfin-office\service.log` (Windows).
 
 ### Désinstallation
 
@@ -66,7 +82,7 @@ powershell -ExecutionPolicy Bypass -File deploy\windows\uninstall.ps1    # Windo
 Par défaut, tout est retiré, secrets compris :
 
 1. **les jetons Jellyfin sont révoqués côté serveur** : celui de l'application et, si MPV Shim est retiré, les siens. Le PC disparaît de la liste des appareils de Jellyfin. Si le serveur est injoignable, les jetons sont quand même effacés du PC ;
-2. service / tâche planifiée, démarrages automatiques, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
+2. service / tâche planifiée, démarrages automatiques, raccourcis, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
 3. **MPV Shim et sa configuration, Node.js et les paquets système**, uniquement s'ils ont été installés par l'installation. Ce qui était déjà là avant est laissé en place ;
 4. tout le dossier de configuration : jeton, identifiants, `config.json`, historique, journaux, ancien `history` du script fish ;
 5. `node_modules` et `dist`.

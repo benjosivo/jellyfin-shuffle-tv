@@ -75,7 +75,7 @@ if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $cli)) {
 Step 'Démarrage automatique'
 Stop-App
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
-Remove-Item $UiShortcut -Force -ErrorAction SilentlyContinue
+Remove-Item $UiShortcut, $StartMenuShortcut, $DesktopShortcut -Force -ErrorAction SilentlyContinue
 foreach ($file in Get-ManifestValues 'file') { Remove-Item $file -Force -ErrorAction SilentlyContinue }
 Ok 'Tâche planifiée et raccourcis supprimés.'
 

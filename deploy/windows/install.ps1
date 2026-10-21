@@ -20,12 +20,15 @@
   Ne pas installer Jellyfin MPV Shim.
 .PARAMETER NoOpenUi
   Ne pas ouvrir la page QR code à chaque ouverture de session.
+.PARAMETER NoShortcuts
+  Ne pas créer les raccourcis « Jellyfin en boucle » (menu Démarrer et bureau).
 #>
 param(
   [int]$Port = 8787,
   [switch]$Yes,
   [switch]$NoMpvShim,
-  [switch]$NoOpenUi
+  [switch]$NoOpenUi,
+  [switch]$NoShortcuts
 )
 
 $ErrorActionPreference = 'Stop'
@@ -45,6 +48,7 @@ if (-not (Test-Admin)) {
   if ($Yes) { $argsList += '-Yes' }
   if ($NoMpvShim) { $argsList += '-NoMpvShim' }
   if ($NoOpenUi) { $argsList += '-NoOpenUi' }
+  if ($NoShortcuts) { $argsList += '-NoShortcuts' }
   $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList -Wait -PassThru
   exit $process.ExitCode
 }
@@ -187,20 +191,31 @@ if ($NoOpenUi) {
   Remove-Item $UiShortcut -Force -ErrorAction SilentlyContinue
   Ok 'Ignorée (-NoOpenUi).'
 } else {
-  $shell = New-Object -ComObject WScript.Shell
-  $link = $shell.CreateShortcut($UiShortcut)
-  $link.TargetPath = 'powershell.exe'
-  $link.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$AppDir\deploy\windows\open-ui.ps1`" -Port $Port"
-  $link.WindowStyle = 7
-  $link.Save()
+  New-AppShortcut $UiShortcut "-Port $Port" 'Affiche le QR code pour piloter la lecture depuis le téléphone'
   Add-Manifest 'file' $UiShortcut
   Ok "Ajoutée : $UiShortcut"
+}
+
+# --- 7. Raccourcis menu Démarrer et bureau ----------------------------------------------------
+
+Step 'Raccourcis « Jellyfin en boucle »'
+if ($NoShortcuts) {
+  Remove-Item $StartMenuShortcut, $DesktopShortcut -Force -ErrorAction SilentlyContinue
+  Ok 'Ignorés (-NoShortcuts).'
+} else {
+  # Relance le serveur s'il est arrêté, puis ouvre l'interface avec le QR code.
+  foreach ($shortcutPath in @($StartMenuShortcut, $DesktopShortcut)) {
+    New-AppShortcut $shortcutPath "-Port $Port -StartServer" "Démarre Jellyfin en boucle et ouvre l'interface"
+    Add-Manifest 'file' $shortcutPath
+  }
+  Ok 'Ajoutés dans le menu Démarrer et sur le bureau.'
 }
 
 # --- Fin ----------------------------------------------------------------------------------------
 
 Step 'Terminé'
 Write-Host "Interface    : http://localhost:$Port/  (le QR code pour le téléphone s'y affiche)"
+Write-Host "Relancer     : raccourci « Jellyfin en boucle » (menu Démarrer ou bureau)"
 Write-Host "Journal      : $ConfigDir\service.log"
 Write-Host "Désinstaller : powershell -ExecutionPolicy Bypass -File `"$AppDir\deploy\windows\uninstall.ps1`""
 if (-not $NoOpenUi) { & (Join-Path $AppDir 'deploy\windows\open-ui.ps1') -Port $Port }
