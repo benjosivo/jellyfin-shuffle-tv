@@ -4,12 +4,34 @@ Lecture aléatoire et continue d'une série Jellyfin sur **Jellyfin MPV Shim**, 
 Remplace le script `the-office-random.fish` (et `auth.py`).
 
 - Enchaîne les épisodes au hasard (sans revoir les mêmes avant d'avoir fait le tour de la série) et coupe 30 s avant la fin pour bloquer l'autoplay de Jellyfin.
-- Interface web mobile : épisode en cours, pause / reprise / passer / stop, barre de progression (seek), volume, mute, piste audio, sous-titres, file des prochains épisodes (retirer, monter, lire maintenant, nouveau tirage), historique avec l'heure, choix de la série, mode auto.
+- Interface web mobile :
+  - épisode en cours, sauts ±5 / ±15 s, épisode précédent / suivant, pause, barre de progression ;
+  - volume, mute, piste audio, sous-titres ;
+  - file des prochains épisodes, liste de tous les épisodes (lire maintenant ou ensuite), historique avec l'heure ;
+  - mode aléatoire ou dans l'ordre, choix de la série, mode auto.
+- **Icône d'état** près de l'horloge (lecture, pause, problème, arrêté), avec un menu de commandes.
 - **QR code** pour ouvrir l'interface sur le téléphone : affiché en grand à l'ouverture de la page sur le PC, à chaque ouverture de session, et dans le journal du service.
 - **Assistant de configuration** pour un PC neuf : découverte du serveur Jellyfin sur le réseau, connexion, détection de MPV Shim, choix de la série.
 - Linux (service systemd utilisateur) et Windows (tâche planifiée au login).
 
 Un seul process Node (port **8787**). Le token Jellyfin reste sur le PC : le téléphone ne parle qu'à l'application, jamais à Jellyfin.
+
+## Aperçu
+
+<p align="center">
+  <img src="docs/screenshots/phone-now-playing.png" width="260" alt="Téléphone : épisode en cours, sauts de ±5 / ±15 s, précédent, pause, suivant">
+  <img src="docs/screenshots/phone-queue.png" width="260" alt="Téléphone : file « À suivre » avec le choix Aléatoire / Dans l'ordre">
+  <img src="docs/screenshots/phone-episodes.png" width="260" alt="Téléphone : liste de tous les épisodes par saison, avec les repères vu, en file, en cours">
+</p>
+<p align="center"><em>Sur le téléphone : lecture en cours, file d'attente, choix d'un épisode.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-qr.png" width="640" alt="PC : page du QR code à scanner avec le téléphone">
+  <img src="docs/screenshots/phone-setup.png" width="260" alt="Assistant de configuration : serveur Jellyfin trouvé automatiquement sur le réseau">
+</p>
+<p align="center"><em>Sur le PC : QR code pour ouvrir l'interface sur le téléphone, et assistant de configuration au premier lancement.</em></p>
+
+<p align="center"><sub>Captures réalisées avec une série de démonstration fictive.</sub></p>
 
 ## Installation
 

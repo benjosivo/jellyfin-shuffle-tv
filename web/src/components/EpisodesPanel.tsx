@@ -84,7 +84,7 @@ export function EpisodesPanel({ state }: { state: PublicState }) {
                   <button className="season-head" onClick={() => toggleSeason(season)} aria-expanded={expanded}>
                     <span>{season === 0 ? "Épisodes spéciaux" : `Saison ${season}`}</span>
                     <span className="muted small-text">
-                      {list.length} épisodes{seen ? ` · ${seen} vus` : ""} {expanded ? "▴" : "▾"}
+                      {list.length} épisode{list.length > 1 ? "s" : ""}{seen ? ` · ${seen} vu${seen > 1 ? "s" : ""}` : ""} {expanded ? "▴" : "▾"}
                     </span>
                   </button>
                   {expanded && (
