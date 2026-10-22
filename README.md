@@ -5,12 +5,34 @@ Remplace le script `the-office-random.fish` (et `auth.py`).
 
 - Enchaîne les épisodes au hasard (sans revoir les mêmes avant d'avoir fait le tour de la série) et coupe 30 s avant la fin pour bloquer l'autoplay de Jellyfin.
 - **Films déjà vus** : une liste de films gérée dans l'application, lue en aléatoire comme une série. Le **générique de fin est passé automatiquement** (voir [Films déjà vus](#films-déjà-vus-et-passage-du-générique)).
-- Interface web mobile : épisode en cours, pause / reprise / passer / stop, barre de progression (seek), volume, mute, piste audio, sous-titres, file des prochains épisodes (retirer, monter, lire maintenant, nouveau tirage), historique avec l'heure, choix de la série, mode auto.
+- Interface web mobile :
+  - épisode en cours, sauts ±5 / ±15 s, épisode précédent / suivant, pause, barre de progression ;
+  - volume, mute, piste audio, sous-titres ;
+  - file des prochains épisodes, liste de tous les épisodes (lire maintenant ou ensuite), historique avec l'heure ;
+  - mode aléatoire ou dans l'ordre, choix de la série, mode auto.
+- **Icône d'état** près de l'horloge (lecture, pause, problème, arrêté), avec un menu de commandes.
 - **QR code** pour ouvrir l'interface sur le téléphone : affiché en grand à l'ouverture de la page sur le PC, à chaque ouverture de session, et dans le journal du service.
 - **Assistant de configuration** pour un PC neuf : découverte du serveur Jellyfin sur le réseau, connexion, détection de MPV Shim, choix de la série.
 - Linux (service systemd utilisateur) et Windows (tâche planifiée au login).
 
 Un seul process Node (port **8787**). Le token Jellyfin reste sur le PC : le téléphone ne parle qu'à l'application, jamais à Jellyfin.
+
+## Aperçu
+
+<p align="center">
+  <img src="docs/screenshots/phone-now-playing.png" width="260" alt="Téléphone : épisode en cours, sauts de ±5 / ±15 s, précédent, pause, suivant">
+  <img src="docs/screenshots/phone-queue.png" width="260" alt="Téléphone : file « À suivre » avec le choix Aléatoire / Dans l'ordre">
+  <img src="docs/screenshots/phone-episodes.png" width="260" alt="Téléphone : liste de tous les épisodes par saison, avec les repères vu, en file, en cours">
+</p>
+<p align="center"><em>Sur le téléphone : lecture en cours, file d'attente, choix d'un épisode.</em></p>
+
+<p align="center">
+  <img src="docs/screenshots/desktop-qr.png" width="640" alt="PC : page du QR code à scanner avec le téléphone">
+  <img src="docs/screenshots/phone-setup.png" width="260" alt="Assistant de configuration : serveur Jellyfin trouvé automatiquement sur le réseau">
+</p>
+<p align="center"><em>Sur le PC : QR code pour ouvrir l'interface sur le téléphone, et assistant de configuration au premier lancement.</em></p>
+
+<p align="center"><sub>Captures réalisées avec une série de démonstration fictive.</sub></p>
 
 ## Installation
 
@@ -134,7 +156,7 @@ La désinstallation peut être relancée sans risque. Installer puis désinstall
 Ouvrir `http://localhost:8787` sur le PC (ou scanner le QR code) :
 
 - **PC neuf** : l'assistant demande le serveur (trouvé automatiquement s'il est sur le même réseau), le compte Jellyfin, puis guide la connexion de MPV Shim (lancer MPV Shim, y ajouter le même serveur et le même utilisateur) et le choix de la série.
-- **PC qui utilisait déjà le script fish** : rien à refaire. Le token créé par `auth.py` est repris tel quel (serveur `192.168.1.122:8096`, utilisateur `En Boucle`), et l'ancien fichier `history` est importé dans l'historique de *The Office* au premier lancement.
+- **PC qui utilisait déjà le script fish** : l'assistant demande seulement le serveur (trouvé automatiquement). Le token créé par `auth.py` est conservé s'il est valide sur ce serveur, sans redemander le mot de passe. L'ancien fichier `history` est importé dans l'historique de la série par défaut (*The Office*).
 
 ## À faire en premier sur la machine actuelle : le spike
 
@@ -159,6 +181,25 @@ npm run spike -- --credits <id>       # affiche les segments « Outro » renvoy�
 ```
 
 ## Utilisation
+
+Depuis le téléphone (ou le PC) :
+
+- **Carte « En cours »** :
+  - barre de progression : toucher pour aller à un endroit précis ;
+  - **−15 s · −5 s · +5 s · +15 s** : les appuis rapides s'additionnent (par exemple 3 × +15 puis −5 donne un seul saut de +40 s) ;
+  - **⏮ épisode précédent · ⏯ pause / reprise · ⏭ épisode suivant**.
+- **Épisode précédent** :
+  - en aléatoire, on remonte l'historique ; un nouvel appui remonte encore, et « suivant » ramène à l'épisode quitté ;
+  - dans l'ordre, c'est l'épisode d'avant dans la série.
+- **Aléatoire / Dans l'ordre** : sélecteur en haut de « À suivre », réglé pour chaque série.
+  - Dans l'ordre, les épisodes s'enchaînent par saison puis numéro, à partir de l'épisode en cours ; après le dernier, retour au premier.
+  - Repasser en aléatoire refait un tirage.
+- **Tous les épisodes** : liste par saison, avec recherche (« S02E05 » ou un mot du titre) et repères « vu », « en file », « en cours ».
+  - **Ensuite** : l'épisode passe en tête de la file.
+  - **▶ Lire maintenant** : il démarre tout de suite. Dans l'ordre, la suite repart de lui.
+- L'icône d'état près de l'horloge propose aussi épisode précédent / suivant, pause, et le choix aléatoire / dans l'ordre.
+
+Comportement :
 
 - **Mode auto** (réglages) : enchaînement automatique. Désactivé, l'application ne fait plus rien d'elle-même ; les boutons restent utilisables.
 - **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard).
@@ -198,7 +239,10 @@ La liste **« Films déjà vus »** est une source comme une série : choisir **
 | Film lancé par l'application, position ≥ début du générique (`Outro`) | idem (si `skipCredits` et générique détecté) |
 | Moins de 8 s depuis le dernier changement | rien (la session renvoie encore l'ancien épisode) |
 
-**File et historique**, par série : la file contient 5 épisodes tirés hors historique ; l'historique garde 95 % des épisodes de la série (borné pour qu'il reste toujours de quoi tirer, quelle que soit la taille de la série).
+**File et historique**, par série :
+- en aléatoire, la file contient 5 épisodes tirés hors historique ;
+- dans l'ordre, elle contient les 5 épisodes qui suivent ;
+- l'historique garde 95 % des épisodes de la série. Il est borné pour qu'il reste toujours de quoi tirer, quelle que soit la taille de la série.
 
 ### Corrections par rapport au script fish
 
@@ -285,6 +329,8 @@ deploy/linux, deploy/windows   install / uninstall, icône d'état Windows (tray
 GET    /api/state                 état complet (aussi poussé en SSE sur /api/events)
 POST   /api/player/pause | resume | skip | stop
 POST   /api/player/seek           { positionSec }
+POST   /api/player/seek-by        { deltaSec }   saut relatif (-600..600)
+POST   /api/player/previous       épisode précédent
 POST   /api/player/volume         { volume } | { muted }
 POST   /api/player/audio          { index }
 POST   /api/player/subtitle       { index }      -1 = désactivés
@@ -292,6 +338,8 @@ POST   /api/auto                  { enabled }
 PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs?, skipCredits? }
 GET    /api/series                la source « films-vus » est en tête de liste
 PUT    /api/series                { seriesId, playNow? }      seriesId = "films-vus" pour la liste de films
+GET    /api/episodes              épisodes de la série courante (+ vu / en file / en cours)
+PUT    /api/order                 { order: "shuffle" | "sequential" }   pour la série courante
 GET    /api/movies                films de la bibliothèque (+ played, inList)
 POST   /api/movies/list           { ids: string[] }      → { added }
 DELETE /api/movies/list/:id
@@ -299,6 +347,7 @@ POST   /api/movies/import-played  → { added }
 GET    /api/queue
 POST   /api/queue/reroll
 POST   /api/queue/play-now        { episodeId }
+POST   /api/queue/play-next       { episodeId }  en tête de file
 DELETE /api/queue/:episodeId
 PATCH  /api/queue                 { order: string[] }
 GET    /api/history?limit=50

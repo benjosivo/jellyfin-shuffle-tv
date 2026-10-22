@@ -114,6 +114,23 @@ export async function fetchPublicInfo(serverUrl: string, identity: Identity): Pr
   return (await response.json()) as PublicSystemInfo;
 }
 
+/** Utilisateur d'un token existant : sert à vérifier qu'il est valide sur ce serveur. */
+export async function fetchUser(
+  serverUrl: string,
+  identity: Identity,
+  token: string,
+  userId: string,
+): Promise<{ Id: string; Name: string } | undefined> {
+  const path = `/Users/${encodeURIComponent(userId)}`;
+  const response = await request(serverUrl, "GET", path, authorizationHeader(identity, token), { timeoutMs: 5000 });
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
+    await response.body?.cancel();
+    return undefined;
+  }
+  if (!response.ok) throw await failure("GET", path, response);
+  return (await response.json()) as { Id: string; Name: string };
+}
+
 /** Connexion par nom d'utilisateur / mot de passe (remplace auth.py). */
 export async function authenticateByName(
   serverUrl: string,

@@ -5,7 +5,7 @@ import type { PublicState, TraySummary } from "../shared/types.js";
 const pad = (n?: number) => String(n ?? 0).padStart(2, "0");
 
 export function traySummary(state: PublicState): TraySummary {
-  const base = { canPause: false, canResume: false, canSkip: false };
+  const base = { canPause: false, canResume: false, canSkip: false, canPrevious: false };
   if (!state.configured) {
     return { ...base, level: "warning", title: "À configurer", detail: "Ouvrir l'interface pour lancer l'assistant." };
   }
@@ -20,11 +20,15 @@ export function traySummary(state: PublicState): TraySummary {
   }
 
   const canSkip = Boolean(state.series);
+  const canPrevious = state.canPrevious;
+  const order = state.series ? state.order : undefined;
   const np = state.nowPlaying;
   if (np) {
     const code = np.season !== undefined || np.episode !== undefined ? `S${pad(np.season)}E${pad(np.episode)} ` : "";
     const detail = `${np.seriesName ? `${np.seriesName} · ` : ""}${code}${np.name}`;
-    if (np.isPaused) return { level: "paused", title: "En pause", detail, canPause: false, canResume: true, canSkip };
+    if (np.isPaused) {
+      return { level: "paused", title: "En pause", detail, canPause: false, canResume: true, canSkip, canPrevious, order };
+    }
     return {
       level: "playing",
       title: np.managed ? "Lecture en boucle" : "Lecture manuelle",
@@ -32,11 +36,15 @@ export function traySummary(state: PublicState): TraySummary {
       canPause: true,
       canResume: false,
       canSkip,
+      canPrevious,
+      order,
     };
   }
   return {
     ...base,
     canSkip,
+    canPrevious,
+    order,
     level: "idle",
     title: state.settings.autoMode ? "En attente du prochain épisode" : "Mode auto désactivé",
     detail: state.series ? `Série : ${state.series.name}` : "Aucune série sélectionnée",
@@ -51,4 +59,5 @@ export const STOPPED: TraySummary = {
   canPause: false,
   canResume: false,
   canSkip: false,
+  canPrevious: false,
 };

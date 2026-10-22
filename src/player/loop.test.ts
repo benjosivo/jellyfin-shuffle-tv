@@ -51,7 +51,7 @@ class FakeJellyfin implements JellyfinApi {
   session(): JfSession {
     return {
       Id: "sess-mpv",
-      UserName: "En Boucle",
+      UserName: "Salon",
       Client: "Jellyfin MPV Shim",
       DeviceName: "cachyos",
       DeviceId: "mpv-device",
@@ -68,7 +68,7 @@ class FakeJellyfin implements JellyfinApi {
     if (!this.reachable) throw new JellyfinError("unreachable", "down");
     return [
       // La session du token de l'application elle-même : ne doit jamais être prise pour MPV Shim.
-      { Id: "sess-self", UserName: "En Boucle", Client: "CachyOS Office Auto", DeviceId: "self", SupportsRemoteControl: true },
+      { Id: "sess-self", UserName: "Salon", Client: "CachyOS Office Auto", DeviceId: "self", SupportsRemoteControl: true },
       ...this.extraSessions,
       this.session(),
     ] as JfSession[];
@@ -122,7 +122,7 @@ async function setup(opts: { legacy?: string[] } = {}) {
     api: fake,
     store,
     library: new Library(fake, () => clock),
-    match: () => ({ userName: "En Boucle", ownDeviceId: "self", pattern: /mpv/i }),
+    match: () => ({ userName: "Salon", ownDeviceId: "self", pattern: /mpv/i }),
     isConfigured: async () => true,
     defaultSeriesName: () => "The Office",
     now: () => clock,
@@ -303,7 +303,7 @@ describe("PlayerLoop", () => {
     await loop.tick();
     expect(loop.snapshot().jellyfin).toBe("unreachable");
     fake.reachable = true;
-    fake.session = () => ({ Id: "x", Client: "Jellyfin Web", SupportsRemoteControl: true, UserName: "En Boucle" });
+    fake.session = () => ({ Id: "x", Client: "Jellyfin Web", SupportsRemoteControl: true, UserName: "Salon" });
     await loop.tick();
     expect(loop.snapshot().jellyfin).toBe("ok");
     expect(loop.snapshot().player).toBe("missing");
@@ -467,3 +467,68 @@ describe("changement de série", () => {
     expect(store.state.series[SERIES]!.queue).toEqual(officeQueue);
   });
 });
+
+describe("contrôles avancés", () => {
+  beforeEach(async () => {
+    await setup();
+  });
+
+  it("saut relatif à partir de la position estimée (temps écoulé depuis le relevé)", async () => {
+    await startFirst();
+    fake.playing!.position = 100 * SEC;
+    await loop.tick();
+    advance(2000); // 2 s se sont écoulées depuis le relevé
+    fake.calls = [];
+    await loop.seekBy(-15);
+    await loop.seekBy(5000);
+    expect(fake.calls).toEqual([
+      `playstate:sess-mpv:Seek:{"seekPositionTicks":${87 * SEC}}`,
+      `playstate:sess-mpv:Seek:{"seekPositionTicks":${1299 * SEC}}`,
+    ]);
+  });
+
+  it("épisode précédent puis suivant en aléatoire", async () => {
+    await startFirst();
+    const first = fake.playing!.item.Id;
+    await loop.skip();
+    advance(SETTLE_MS);
+    await loop.tick();
+    const second = fake.playing!.item.Id;
+    expect(loop.snapshot().canPrevious).toBe(true);
+    await loop.previous();
+    expect(fake.playing!.item.Id).toBe(first);
+    advance(SETTLE_MS);
+    await loop.tick();
+    await loop.skip();
+    expect(fake.playing!.item.Id).toBe(second);
+  });
+
+  it("dans l'ordre : enchaînement automatique jusqu'au retour au premier épisode", async () => {
+    fake.items = episodes(3);
+    await startFirst();
+    await loop.playNow("ep2");
+    await loop.setOrder("sequential");
+    expect(loop.snapshot().queue.map((e) => e.id)).toEqual(["ep3", "ep1"]);
+    const seenOrder: string[] = [fake.playing!.item.Id];
+    for (let i = 0; i < 3; i++) {
+      advance(SETTLE_MS);
+      await loop.tick();
+      fake.playing!.position = 1290 * SEC; // presque fini
+      await loop.tick();
+      seenOrder.push(fake.playing!.item.Id);
+    }
+    expect(seenOrder).toEqual(["ep2", "ep3", "ep1", "ep2"]);
+    expect(store.state.series[SERIES]!.order).toBe("sequential");
+  });
+
+  it("liste des épisodes avec leur statut et « lire ensuite »", async () => {
+    await startFirst();
+    await loop.playNext("ep30");
+    const list = await loop.episodes();
+    expect(list).toHaveLength(30);
+    expect(list.find((e) => e.playing)?.id).toBe(fake.playing!.item.Id);
+    expect(list.find((e) => e.id === "ep30")?.queued).toBe(true);
+    expect(loop.snapshot().queue[0]!.id).toBe("ep30");
+  });
+});
+

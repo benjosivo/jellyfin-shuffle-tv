@@ -21,6 +21,8 @@ const base: PublicState = {
   history: [],
   historyCount: 0,
   historyLimit: 190,
+  order: "shuffle",
+  canPrevious: true,
   sampledAt: 0,
   movieCount: 0,
   remoteClients: 0,
@@ -43,13 +45,21 @@ describe("traySummary", () => {
 });
 
 describe("menu de l'icône", () => {
-  const noop = { open() {}, qr() {}, pause() {}, resume() {}, skip() {}, restart() {}, quit() {} };
+  const noop = { open() {}, qr() {}, pause() {}, resume() {}, skip() {}, previous() {}, shuffle() {}, sequential() {}, restart() {}, quit() {} };
   it("propose Reprendre en pause et Démarrer quand le serveur est arrêté", () => {
     const paused = buildMenu(traySummary({ ...base, nowPlaying: { ...episode, isPaused: true } }), noop);
     expect(paused.find((i) => i.id === 20)?.label).toBe("Reprendre");
     const stopped = buildMenu(STOPPED, noop);
     expect(stopped.find((i) => i.id === 30)?.label).toBe("Démarrer le serveur");
     expect(stopped.find((i) => i.id === 10)?.enabled).toBe(false);
+    expect(stopped.find((i) => i.id === 23)?.enabled).toBe(false);
+  });
+
+  it("coche le mode de lecture courant et propose l'épisode précédent", () => {
+    const menu = buildMenu(traySummary({ ...base, order: "sequential", nowPlaying: { ...episode, isPaused: false } }), noop);
+    expect(menu.find((i) => i.id === 24)).toMatchObject({ radio: true, checked: true });
+    expect(menu.find((i) => i.id === 23)?.checked).toBe(false);
+    expect(menu.find((i) => i.id === 19)?.enabled).toBe(true);
   });
 });
 

@@ -16,7 +16,7 @@ $base = "http://127.0.0.1:$Port"
 $uiUrl = "http://localhost:$Port/"
 $stopped = [pscustomobject]@{
   level = 'stopped'; title = 'Arrêté'; detail = 'Le serveur Jellyfin en boucle ne répond pas.'
-  canPause = $false; canResume = $false; canSkip = $false
+  canPause = $false; canResume = $false; canSkip = $false; canPrevious = $false; order = $null
 }
 
 # --- Icônes (mêmes formes et couleurs que sous Linux) ---------------------------------------
@@ -75,6 +75,11 @@ function Invoke-Player([string]$action) {
   Update-Tray
 }
 
+function Set-Order([string]$order) {
+  try { Invoke-RestMethod "$base/api/order" -Method Put -Body "{`"order`":`"$order`"}" -ContentType 'application/json' -TimeoutSec 5 | Out-Null } catch { }
+  Update-Tray
+}
+
 function Restart-Server {
   Stop-App
   Start-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
@@ -105,8 +110,12 @@ $openItem = Add-Item "Ouvrir l'interface" { Open-Ui }
 $openItem.Font = New-Object System.Drawing.Font($openItem.Font, [System.Drawing.FontStyle]::Bold)
 $qrItem = Add-Item 'Afficher le QR code (téléphone)' { Open-Ui '?qr=1' }
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+$previousItem = Add-Item 'Épisode précédent' { Invoke-Player 'previous' }
 $toggleItem = Add-Item 'Pause' { if ($script:summary.canResume) { Invoke-Player 'resume' } else { Invoke-Player 'pause' } }
 $skipItem = Add-Item 'Épisode suivant' { Invoke-Player 'skip' }
+[void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
+$shuffleItem = Add-Item 'Aléatoire' { Set-Order 'shuffle' }
+$sequentialItem = Add-Item "Dans l'ordre" { Set-Order 'sequential' }
 [void]$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator))
 $restartItem = Add-Item 'Redémarrer le serveur' { Restart-Server; Update-Tray }
 $quitItem = Add-Item 'Masquer cette icône' {
@@ -138,6 +147,11 @@ function Update-Tray {
   $toggleItem.Text = if ($s.canResume) { 'Reprendre' } else { 'Pause' }
   $toggleItem.Enabled = [bool]($s.canPause -or $s.canResume)
   $skipItem.Enabled = [bool]$s.canSkip
+  $previousItem.Enabled = [bool]$s.canPrevious
+  $shuffleItem.Enabled = [bool]$s.order
+  $sequentialItem.Enabled = [bool]$s.order
+  $shuffleItem.Checked = $s.order -eq 'shuffle'
+  $sequentialItem.Checked = $s.order -eq 'sequential'
   $restartItem.Text = if ($running) { 'Redémarrer le serveur' } else { 'Démarrer le serveur' }
 }
 

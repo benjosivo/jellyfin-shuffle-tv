@@ -76,6 +76,17 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
     await loop.stopPlayback();
     res.status(204).end();
   });
+  api.post("/player/seek-by", async (req, res) => {
+    const delta = req.body?.deltaSec;
+    if (typeof delta !== "number" || !Number.isFinite(delta) || delta < -600 || delta > 600 || delta === 0) {
+      throw new HttpError(400, "deltaSec doit être un nombre non nul entre -600 et 600.");
+    }
+    await loop.seekBy(delta);
+    res.status(204).end();
+  });
+  api.post("/player/previous", async (_req, res) => {
+    res.json({ episodeId: await loop.previous() });
+  });
   api.post("/player/seek", async (req, res) => {
     await loop.seek(numberField(req, "positionSec", 0));
     res.status(204).end();
@@ -147,13 +158,28 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
     res.status(204).end();
   });
 
-  // --- File et historique -------------------------------------------------------
+  // --- Épisodes, file et historique ----------------------------------------------
+
+  api.get("/episodes", async (_req, res) => {
+    res.json(await loop.episodes());
+  });
+
+  api.put("/order", async (req, res) => {
+    const order = req.body?.order;
+    if (order !== "shuffle" && order !== "sequential") throw new HttpError(400, "order : « shuffle » ou « sequential ».");
+    await loop.setOrder(order);
+    res.status(204).end();
+  });
 
   api.get("/queue", (_req, res) => {
     res.json(loop.snapshot().queue);
   });
   api.post("/queue/reroll", async (_req, res) => {
     await loop.reroll();
+    res.status(204).end();
+  });
+  api.post("/queue/play-next", async (req, res) => {
+    await loop.playNext(stringField(req, "episodeId"));
     res.status(204).end();
   });
   api.post("/queue/play-now", async (req, res) => {

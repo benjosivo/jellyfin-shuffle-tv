@@ -157,7 +157,7 @@ export function normalize(input: unknown): PersistedState {
         })
       : [];
     const queue = Array.isArray(entry.queue) ? entry.queue.filter((item): item is string => typeof item === "string") : [];
-    series[id] = { history, queue };
+    series[id] = entry.order === "sequential" ? { history, queue, order: "sequential" } : { history, queue };
   }
 
   const state: PersistedState = {

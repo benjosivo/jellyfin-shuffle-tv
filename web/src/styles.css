@@ -369,6 +369,141 @@ button.link.danger {
   border-color: var(--accent);
 }
 
+.jump-pending {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.jumps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.jump {
+  min-height: 46px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  touch-action: manipulation;
+}
+
+.jump small {
+  margin-left: 2px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.jump:not(:disabled):active {
+  background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+}
+
+.secondary-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+/* --- Ordre de lecture et liste des épisodes --------------------------------------- */
+
+.segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin-bottom: 8px;
+}
+
+.segmented button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 40px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.segmented button.active {
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+.card-toggle {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 32px;
+}
+
+.card-toggle h2 {
+  margin: 0;
+}
+
+.season {
+  margin-top: 10px;
+}
+
+.season-head {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  font-weight: 600;
+}
+
+.episode-picker {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.episode-picker li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 6px;
+  border-top: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.episode-picker li:first-child {
+  border-top: none;
+}
+
+.episode-picker li.playing {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.badges .chip {
+  font-size: 0.7rem;
+  padding: 1px 7px;
+}
+
+.episode-picker .row-actions {
+  align-items: center;
+  gap: 2px;
+}
+
 /* --- Son ------------------------------------------------------------------------- */
 
 .volume-row {

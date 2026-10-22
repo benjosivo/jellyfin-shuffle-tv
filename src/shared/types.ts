@@ -24,10 +24,14 @@ export interface HistoryEntry {
   at: number;
 }
 
+export type PlayOrder = "shuffle" | "sequential";
+
 export interface SeriesState {
   /** Du plus ancien au plus récent. */
   history: HistoryEntry[];
   queue: string[];
+  /** Aléatoire (défaut) ou dans l'ordre de la série. */
+  order?: PlayOrder;
 }
 
 export type JellyfinStatus = "unknown" | "ok" | "unreachable" | "unauthorized";
@@ -45,6 +49,12 @@ export interface EpisodeInfo {
   year?: number;
   /** Type Jellyfin (« Episode », « Movie »…). */
   type?: string;
+}
+
+export interface EpisodeListItem extends EpisodeInfo {
+  seen: boolean;
+  queued: boolean;
+  playing: boolean;
 }
 
 export interface Track {
@@ -94,6 +104,9 @@ export interface PublicState {
   history: (EpisodeInfo & { at: number })[];
   historyCount: number;
   historyLimit: number;
+  /** Mode de lecture de la série courante. */
+  order: PlayOrder;
+  canPrevious: boolean;
   /** Date (epoch ms, horloge serveur) à laquelle l'état de la session a été relevé. */
   sampledAt: number;
   /** Nombre d'interfaces ouvertes depuis un autre appareil (téléphone…). */
@@ -176,4 +189,7 @@ export interface TraySummary {
   canPause: boolean;
   canResume: boolean;
   canSkip: boolean;
+  canPrevious: boolean;
+  /** Absent quand le serveur est arrêté ou la série inconnue. */
+  order?: PlayOrder;
 }

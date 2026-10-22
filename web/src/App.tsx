@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AccessInfo } from "../../src/shared/types";
 import { api } from "./api";
+import { EpisodesPanel } from "./components/EpisodesPanel";
 import { HistoryPanel } from "./components/HistoryPanel";
 import { MoviesPanel } from "./components/MoviesPanel";
 import { NowPlayingPanel } from "./components/NowPlayingPanel";
@@ -76,6 +77,7 @@ export function App() {
           <SoundPanel state={state} />
           <QueuePanel state={state} />
           {state.series?.kind === "movies" && <MoviesPanel state={state} />}
+          <EpisodesPanel state={state} />
           <HistoryPanel state={state} />
           <SettingsPanel state={state} onOpenSetup={() => setWizard(true)} />
         </main>
