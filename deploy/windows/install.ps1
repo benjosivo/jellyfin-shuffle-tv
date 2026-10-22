@@ -24,6 +24,8 @@
   Ne pas créer les raccourcis « Jellyfin en boucle » (menu Démarrer et bureau).
 .PARAMETER NoTray
   Ne pas afficher l'icône d'état près de l'horloge.
+.PARAMETER NoAutoUpdate
+  Ne pas installer la mise à jour automatique (tâche quotidienne qui lance update.ps1).
 #>
 param(
   [int]$Port = 8787,
@@ -31,7 +33,8 @@ param(
   [switch]$NoMpvShim,
   [switch]$NoOpenUi,
   [switch]$NoShortcuts,
-  [switch]$NoTray
+  [switch]$NoTray,
+  [switch]$NoAutoUpdate
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +56,7 @@ if (-not (Test-Admin)) {
   if ($NoOpenUi) { $argsList += '-NoOpenUi' }
   if ($NoShortcuts) { $argsList += '-NoShortcuts' }
   if ($NoTray) { $argsList += '-NoTray' }
+  if ($NoAutoUpdate) { $argsList += '-NoAutoUpdate' }
   $process = Start-Process powershell.exe -Verb RunAs -ArgumentList $argsList -Wait -PassThru
   exit $process.ExitCode
 }
@@ -230,12 +234,36 @@ if ($NoTray) {
   Write-Host "    Si elle est cachée : flèche ^ près de l'horloge, puis la faire glisser dans la barre des tâches."
 }
 
+# --- 9. Mise à jour automatique -----------------------------------------------------------------
+
+Step 'Mise à jour automatique'
+Unregister-ScheduledTask -TaskName $UpdateTaskName -Confirm:$false -ErrorAction SilentlyContinue
+$upstream = & git -C $AppDir rev-parse --abbrev-ref '@{u}' 2>$null
+if ($NoAutoUpdate) {
+  Ok 'Ignorée (-NoAutoUpdate) : lancer deploy\windows\update.ps1 à la main.'
+} elseif ($LASTEXITCODE -ne 0) {
+  Warn "Le dossier n'est pas un dépôt git suivant une branche distante : mise à jour automatique non installée."
+} else {
+  $updateVbs = Join-Path $AppDir 'deploy\windows\update-hidden.vbs'
+  $updateAction = New-ScheduledTaskAction -Execute 'wscript.exe' -Argument "`"$updateVbs`"" -WorkingDirectory $AppDir
+  # Chaque jour à 4 h (rattrapé à l'ouverture de session si le PC était éteint), et 5 minutes après chaque login.
+  $logon = New-ScheduledTaskTrigger -AtLogOn -User $UserId
+  $logon.Delay = 'PT5M'
+  $updateTriggers = @((New-ScheduledTaskTrigger -Daily -At '04:00'), $logon)
+  $updateSettings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 30) -MultipleInstances IgnoreNew
+  Register-ScheduledTask -TaskName $UpdateTaskName -Action $updateAction -Trigger $updateTriggers -Settings $updateSettings -Principal $principal `
+    -Description "Jellyfin en boucle : récupère les nouvelles versions ($upstream) et relance l'application" -Force | Out-Null
+  Add-Manifest 'update-task' $UpdateTaskName
+  Ok "Tâche « $UpdateTaskName » créée (suit $upstream, tous les jours à 4 h et à l'ouverture de session)."
+}
+
 # --- Fin ----------------------------------------------------------------------------------------
 
 Step 'Terminé'
 Write-Host "Interface    : http://localhost:$Port/  (le QR code pour le téléphone s'y affiche)"
 Write-Host "Relancer     : raccourci « Jellyfin en boucle » (menu Démarrer ou bureau)"
-Write-Host "Journal      : $ConfigDir\service.log"
+Write-Host "Journal      : $ConfigDir\service.log  (mises à jour : update.log)"
 Write-Host "Désinstaller : powershell -ExecutionPolicy Bypass -File `"$AppDir\deploy\windows\uninstall.ps1`""
 if (-not $NoOpenUi) { Start-AsUser $UiShortcut }
 if (-not $Yes) { Read-Host 'Appuyer sur Entrée pour fermer' | Out-Null }

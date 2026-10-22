@@ -3,10 +3,10 @@
 #
 #   deploy/linux/install.sh                 installe tout sans poser de question (sudo est demandé si besoin)
 #   deploy/linux/install.sh --ask           demande confirmation à chaque étape
-#   deploy/linux/install.sh --no-mpv-shim --no-open-ui --no-tray
+#   deploy/linux/install.sh --no-mpv-shim --no-open-ui --no-tray --no-auto-update
 #
-# Étapes : Node.js, Jellyfin MPV Shim, build, service systemd utilisateur, pare-feu,
-# ouverture de la page QR code au login, icône d'état, repérage de l'ancien script fish.
+# Étapes : Node.js, Jellyfin MPV Shim, build, service systemd utilisateur, mise à jour automatique,
+# pare-feu, ouverture de la page QR code au login, icône d'état, repérage de l'ancien script fish.
 # Tout ce qui est ajouté est noté pour que deploy/linux/uninstall.sh le retire proprement.
 # Peut être relancé autant de fois que voulu.
 
@@ -19,6 +19,7 @@ ASSUME_YES=1
 INSTALL_MPV_SHIM=1
 OPEN_UI=1
 TRAY=1
+AUTO_UPDATE=1
 for arg in "$@"; do
   case "$arg" in
     --ask) ASSUME_YES=0 ;;
@@ -26,6 +27,7 @@ for arg in "$@"; do
     --no-mpv-shim) INSTALL_MPV_SHIM=0 ;;
     --no-open-ui) OPEN_UI=0 ;;
     --no-tray) TRAY=0 ;;
+    --no-auto-update) AUTO_UPDATE=0 ;;
     -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
     *) echo "Option inconnue : $arg" >&2; exit 2 ;;
   esac
@@ -206,7 +208,29 @@ if [[ $ASSUME_YES -eq 0 ]] && have loginctl && [[ "$(loginctl show-user "$USER_N
   fi
 fi
 
-# --- 5. Pare-feu ------------------------------------------------------------------------
+# --- 5. Mise à jour automatique ---------------------------------------------------------
+
+step "Mise à jour automatique"
+UPDATE_UNIT="jellyfin-office-update.service"
+UPDATE_TIMER="jellyfin-office-update.timer"
+if [[ $AUTO_UPDATE -eq 0 ]]; then
+  systemctl --user disable --now "$UPDATE_TIMER" >/dev/null 2>&1 || true
+  rm -f "$SYSTEMD_DIR/$UPDATE_UNIT" "$SYSTEMD_DIR/$UPDATE_TIMER"
+  systemctl --user daemon-reload
+  ok "Ignorée (--no-auto-update) : lancer deploy/linux/update.sh à la main."
+elif ! have git || ! upstream="$(git -C "$APP_DIR" rev-parse --abbrev-ref '@{u}' 2>/dev/null)"; then
+  warn "Le dossier n'est pas un dépôt git suivant une branche distante : mise à jour automatique non installée."
+else
+  for unit in "$UPDATE_UNIT" "$UPDATE_TIMER"; do
+    sed -e "s|__APP_DIR__|$APP_DIR|g" -e "s|__NODE_DIR__|$(dirname "$NODE_BIN")|g" -e "s|__CONFIG_DIR__|$CONFIG_DIR|g"       "$APP_DIR/deploy/linux/$unit" > "$SYSTEMD_DIR/$unit"
+    manifest_add "file $SYSTEMD_DIR/$unit"
+  done
+  systemctl --user daemon-reload
+  systemctl --user enable --now "$UPDATE_TIMER" >/dev/null
+  ok "Minuteur actif (suit $upstream, tous les jours vers 4 h et au démarrage) : journalctl --user -u jellyfin-office-update"
+fi
+
+# --- 6. Pare-feu ------------------------------------------------------------------------
 
 step "Pare-feu (accès depuis le téléphone)"
 if have ufw && systemctl is-active --quiet ufw 2>/dev/null; then
@@ -231,7 +255,7 @@ else
   ok "Aucun pare-feu actif détecté."
 fi
 
-# --- 6. Page QR code à l'ouverture de session --------------------------------------------
+# --- 7. Page QR code à l'ouverture de session --------------------------------------------
 
 step "Page QR code au login"
 ui_desktop="$AUTOSTART_DIR/jellyfin-en-boucle.desktop"
@@ -252,7 +276,7 @@ else
   ok "Ignorée (--no-open-ui)."
 fi
 
-# --- 7. Icône d'état dans la zone de notification ---------------------------------------------
+# --- 8. Icône d'état dans la zone de notification ---------------------------------------------
 
 step "Icône d'état (zone de notification)"
 tray_script="$APP_DIR/dist/server/tray/linux.js"
@@ -281,7 +305,7 @@ else
   ok "Ignorée (--no-tray)."
 fi
 
-# --- 8. Ancien script fish ---------------------------------------------------------------
+# --- 9. Ancien script fish ---------------------------------------------------------------
 
 step "Ancien script fish"
 found=0

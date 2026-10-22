@@ -3,6 +3,7 @@
 $AppDir = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $ConfigDir = if ($env:JELLYFIN_OFFICE_DIR) { $env:JELLYFIN_OFFICE_DIR } else { Join-Path $env:APPDATA 'jellyfin-office' }
 $TaskName = 'Jellyfin en boucle'
+$UpdateTaskName = 'Jellyfin en boucle (mise à jour)'
 $FirewallRuleName = 'Jellyfin en boucle'
 $StartupDir = [Environment]::GetFolderPath('Startup')
 $UiShortcut = Join-Path $StartupDir 'Jellyfin en boucle (QR code).lnk'
@@ -61,15 +62,19 @@ function Stop-MpvShim {
     Stop-Process -Force -ErrorAction SilentlyContinue
 }
 
-# Arrête la tâche planifiée et le serveur Node de l'application (fichiers libérés pour npm / suppression).
-function Stop-App {
-  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+# Processus de l'application : la boucle run.ps1 et le serveur Node qu'elle lance.
+function Get-AppProcesses {
   Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe' OR Name = 'node.exe' OR Name = 'cmd.exe'" -ErrorAction SilentlyContinue |
     Where-Object {
       $_.ProcessId -ne $PID -and $_.CommandLine -and $_.CommandLine.Contains($AppDir) -and
       ($_.CommandLine.Contains('run.ps1') -or $_.CommandLine.Contains('dist\server\index.js'))
-    } |
-    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+# Arrête la tâche planifiée et le serveur Node de l'application (fichiers libérés pour npm / suppression).
+function Stop-App {
+  Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
+  Get-AppProcesses | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
   Start-Sleep -Milliseconds 500
 }
 

@@ -1,0 +1,17 @@
+# Modèle installé par deploy/linux/install.sh dans ~/.config/systemd/user/jellyfin-office-update.service
+# (__APP_DIR__ et __NODE_DIR__ sont remplacés à l'installation). Déclenché par jellyfin-office-update.timer.
+
+[Unit]
+Description=Jellyfin en boucle : mise à jour depuis git
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=__APP_DIR__
+ExecStart=/bin/bash __APP_DIR__/deploy/linux/update.sh
+# node et npm doivent être trouvés comme à l'installation (nvm, /usr/local…).
+Environment=PATH=__NODE_DIR__:/usr/local/bin:/usr/bin:/bin
+Environment=JELLYFIN_OFFICE_DIR=__CONFIG_DIR__
+# Le build peut durer quelques minutes sur une petite machine.
+TimeoutStartSec=30min

@@ -1,0 +1,14 @@
+# Modèle installé par deploy/linux/install.sh dans ~/.config/systemd/user/jellyfin-office-update.timer
+
+[Unit]
+Description=Jellyfin en boucle : recherche quotidienne de mises à jour
+
+[Timer]
+# Chaque jour vers 4 h (rattrapé au démarrage si la machine était éteinte), et 10 minutes après l'ouverture de session.
+OnCalendar=*-*-* 04:00:00
+RandomizedDelaySec=30min
+Persistent=true
+OnStartupSec=10min
+
+[Install]
+WantedBy=timers.target

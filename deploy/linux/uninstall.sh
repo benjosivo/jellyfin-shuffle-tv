@@ -40,7 +40,7 @@ mpv_shim_via="$(manifest_values mpv-shim | head -n1)"
 
 step "Désinstallation de Jellyfin en boucle"
 echo "Seront supprimés :"
-echo "  - le service jellyfin-office, l'icône d'état et les démarrages automatiques"
+echo "  - le service jellyfin-office, son minuteur de mise à jour, l'icône d'état et les démarrages automatiques"
 echo "  - $CONFIG_DIR (jeton Jellyfin, identifiants, historique, journaux), après révocation du jeton"
 echo "  - node_modules et dist dans $APP_DIR"
 [[ $REMOVE_FOLDER -eq 1 ]] && echo "  - le dossier $APP_DIR lui-même"
@@ -79,12 +79,15 @@ fi
 
 step "Service"
 if have systemctl; then
+  # Le minuteur d'abord : une mise à jour en cours relancerait le service qu'on arrête.
+  systemctl --user disable --now jellyfin-office-update.timer >/dev/null 2>&1 || true
+  systemctl --user stop jellyfin-office-update.service >/dev/null 2>&1 || true
   systemctl --user disable --now "$UNIT_NAME" >/dev/null 2>&1 || true
 fi
-rm -f "$SYSTEMD_DIR/$UNIT_NAME"
+rm -f "$SYSTEMD_DIR/$UNIT_NAME" "$SYSTEMD_DIR/jellyfin-office-update.service" "$SYSTEMD_DIR/jellyfin-office-update.timer"
 if have systemctl; then
   systemctl --user daemon-reload >/dev/null 2>&1 || true
-  systemctl --user reset-failed "$UNIT_NAME" >/dev/null 2>&1 || true
+  systemctl --user reset-failed "$UNIT_NAME" jellyfin-office-update.service >/dev/null 2>&1 || true
 fi
 ok "Service arrêté et supprimé."
 

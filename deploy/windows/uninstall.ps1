@@ -4,7 +4,7 @@
   Désinstallation complète de « Jellyfin en boucle » sous Windows.
 
 .DESCRIPTION
-  Retire la tâche planifiée, la règle de pare-feu, les raccourcis de démarrage et tout le dossier
+  Retire les tâches planifiées, la règle de pare-feu, les raccourcis de démarrage et tout le dossier
   de configuration (jeton, identifiants, historique, journaux), après révocation des jetons
   côté Jellyfin. MPV Shim et Node.js ne sont retirés que si c'est l'installation qui les avait
   ajoutés ; ce qui existait avant reste en place. Peut être relancé sans risque.
@@ -45,7 +45,7 @@ $removeNode = (-not $KeepThirdParty) -and ((Get-ManifestValues 'node') -contains
 
 Step 'Désinstallation de Jellyfin en boucle'
 Write-Host 'Seront supprimés :'
-Write-Host "  - la tâche planifiée « $TaskName », la règle de pare-feu et les raccourcis de démarrage"
+Write-Host "  - les tâches planifiées « $TaskName » et « $UpdateTaskName », la règle de pare-feu et les raccourcis de démarrage"
 Write-Host "  - $ConfigDir (jeton Jellyfin, identifiants, historique, journaux), après révocation du jeton"
 Write-Host "  - node_modules et dist dans $AppDir"
 if ($RemoveFolder) { Write-Host "  - le dossier $AppDir lui-même" }
@@ -73,6 +73,9 @@ if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $cli)) {
 # --- 2. Tâche planifiée et processus ----------------------------------------------------------
 
 Step 'Démarrage automatique'
+# La mise à jour d'abord : elle relancerait l'application qu'on arrête.
+Stop-ScheduledTask -TaskName $UpdateTaskName -ErrorAction SilentlyContinue
+Unregister-ScheduledTask -TaskName $UpdateTaskName -Confirm:$false -ErrorAction SilentlyContinue
 Stop-App
 Stop-Tray
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
