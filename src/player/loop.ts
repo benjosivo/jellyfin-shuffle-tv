@@ -2,9 +2,17 @@ import { EventEmitter } from "node:events";
 import { HttpError } from "../errors.js";
 import { JellyfinError, type JellyfinApi } from "../jellyfin/client.js";
 import { findPlayerSession, type PlayerMatchConfig } from "../jellyfin/session.js";
-import { supportedCommands, TICKS_PER_SECOND, type JfSession } from "../jellyfin/types.js";
+import { supportedCommands, TICKS_PER_SECOND, type JfItem, type JfSession } from "../jellyfin/types.js";
 import { log as defaultLog } from "../log.js";
-import type { EpisodeInfo, JellyfinStatus, PublicState, SeriesState, Settings } from "../shared/types.js";
+import {
+  MOVIES_SOURCE_ID,
+  type EpisodeInfo,
+  type JellyfinStatus,
+  type MovieSummary,
+  type PublicState,
+  type SeriesState,
+  type Settings,
+} from "../shared/types.js";
 import { SETTING_BOUNDS, type Store } from "../store.js";
 import { toEpisodeInfo, type Library, type SeriesEpisodes } from "./library.js";
 import * as queue from "./queue.js";
@@ -19,7 +27,12 @@ import * as queue from "./queue.js";
 // - l'épisode suivant vient de la file (tirée à l'avance) ;
 // - un contenu lancé manuellement n'est pas interrompu : on reprend la main quand la lecture s'arrête ;
 // - RunTimeTicks absent ou nul : on ne coupe pas ;
-// - après un changement, la session est ignorée quelques secondes (elle remonte encore l'ancien épisode).
+// - après un changement, la session est ignorée quelques secondes (elle remonte encore l'ancien épisode) ;
+// - films : on passe au suivant dès le début du générique (segment « Outro » d'Intro Skipper), s'il est connu ;
+// - la liste « Films déjà vus » est une source virtuelle (MOVIES_SOURCE_ID) traitée comme une série.
+
+/** Un « Outro » avant cette fraction de la durée est pris pour une mauvaise détection et ignoré. */
+const MIN_CREDITS_RATIO = 0.5;
 
 /** Fenêtre pendant laquelle la session est ignorée après un changement d'épisode. */
 export const SETTLE_MS = 8000;
@@ -148,8 +161,11 @@ export class PlayerLoop extends EventEmitter {
         return undefined;
       });
 
-      const playing = this.session?.NowPlayingItem?.Id;
-      if (playing) await this.library.getTracks(playing).catch(() => undefined);
+      const playing = this.session?.NowPlayingItem;
+      if (playing) {
+        await this.library.getTracks(playing.Id).catch(() => undefined);
+        if (playing.Type === "Movie") await this.library.getCredits(playing.Id).catch(() => undefined);
+      }
 
       if (this.session && episodes) {
         // Les échecs sont déjà journalisés ; la boucle doit continuer quoi qu'il arrive.
@@ -227,11 +243,25 @@ export class PlayerLoop extends EventEmitter {
     const runtime = item.RunTimeTicks ?? 0;
     if (runtime <= 0) return;
 
-    const remaining = runtime - (playState.PositionTicks ?? 0);
-    if (remaining < settings.changeBeforeEndSec * TICKS_PER_SECOND) {
+    const position = playState.PositionTicks ?? 0;
+    const creditsAt = this.creditsTicks(item);
+    if (creditsAt !== undefined && position >= creditsAt) {
+      this.log.info("Générique atteint : arrêt préventif et film suivant.");
+      await this.advance(session, episodes, { stopFirst: true });
+    } else if (runtime - position < settings.changeBeforeEndSec * TICKS_PER_SECOND) {
       this.log.info("Épisode bientôt terminé : arrêt préventif pour empêcher l'autoplay.");
       await this.advance(session, episodes, { stopFirst: true });
     }
+  }
+
+  /** Début du générique (ticks) d'un film, s'il est connu, plausible et que l'option est active. */
+  private creditsTicks(item: JfItem): number | undefined {
+    const runtime = item.RunTimeTicks ?? 0;
+    if (!this.store.settings.skipCredits || item.Type !== "Movie" || runtime <= 0) return undefined;
+    const startSec = this.library.cachedCredits(item.Id);
+    if (startSec === null) return undefined;
+    const ticks = startSec * TICKS_PER_SECOND;
+    return ticks >= runtime * MIN_CREDITS_RATIO && ticks < runtime ? ticks : undefined;
   }
 
   /** Lance l'épisode suivant de la file (ou `episodeId`). Renvoie l'ID lancé. */
@@ -247,7 +277,7 @@ export class PlayerLoop extends EventEmitter {
     this.store.save();
 
     const info = episodes.byId.get(id);
-    this.log.info(`Épisode choisi : ${info ? `${code(info)} - ${info.name}` : id}`);
+    this.log.info(`Épisode choisi : ${info ? label(info) : id}`);
 
     if (opts.stopFirst) {
       try {
@@ -281,6 +311,13 @@ export class PlayerLoop extends EventEmitter {
 
   // --- Série courante -------------------------------------------------------------
 
+  /** Épisodes d'une série, ou films de la liste « déjà vus » pour la source virtuelle. */
+  private loadSource(seriesId: string, force = false): Promise<SeriesEpisodes> {
+    return seriesId === MOVIES_SOURCE_ID
+      ? this.library.movieSource(this.store.state.movies, force)
+      : this.library.getEpisodes(seriesId, force);
+  }
+
   /** Résout la série courante (série par défaut au premier lancement, import de l'ancien historique). */
   private async ensureSeries(): Promise<SeriesEpisodes | undefined> {
     const state = this.store.state;
@@ -295,12 +332,21 @@ export class PlayerLoop extends EventEmitter {
 
     let episodes: SeriesEpisodes;
     try {
-      episodes = await this.library.getEpisodes(state.currentSeriesId);
+      episodes = await this.loadSource(state.currentSeriesId);
     } catch (err) {
       if (!(err instanceof JellyfinError && err.kind === "http")) throw err;
       episodes = { seriesId: state.currentSeriesId, seriesName: "", episodes: [], byId: new Map(), fetchedAt: 0 };
     }
     if (episodes.episodes.length === 0) {
+      if (state.currentSeriesId === MOVIES_SOURCE_ID) {
+        // Liste de films vide : on garde la source (des films y seront ajoutés), sans file périmée.
+        const series = this.store.seriesState(MOVIES_SOURCE_ID);
+        if (series.queue.length > 0) {
+          series.queue = [];
+          this.store.save();
+        }
+        return undefined;
+      }
       // Série supprimée, ou appartenant à un autre serveur / compte : il faut en choisir une autre.
       this.log.warn("La série sélectionnée est introuvable ou vide : choisir une série dans les réglages.");
       state.currentSeriesId = "";
@@ -309,7 +355,7 @@ export class PlayerLoop extends EventEmitter {
     }
     const series = this.store.seriesState(state.currentSeriesId);
 
-    if (state.pendingImport) {
+    if (state.pendingImport && state.currentSeriesId !== MOVIES_SOURCE_ID) {
       const known = new Set(episodes.byId.keys());
       const imported = state.pendingImport.filter((id) => known.has(id));
       series.history = [...imported.map((id) => ({ id, at: 0 })), ...series.history];
@@ -331,7 +377,10 @@ export class PlayerLoop extends EventEmitter {
 
   private async currentEpisodes(): Promise<SeriesEpisodes> {
     const episodes = await this.ensureSeries();
-    if (!episodes) throw new HttpError(409, "Aucune série sélectionnée.");
+    if (!episodes) {
+      const emptyList = this.store.state.currentSeriesId === MOVIES_SOURCE_ID;
+      throw new HttpError(409, emptyList ? "Liste de films vide : ajouter des films." : "Aucune série sélectionnée.");
+    }
     return episodes;
   }
 
@@ -426,6 +475,10 @@ export class PlayerLoop extends EventEmitter {
         if (value < min || value > max) throw new HttpError(400, `${key} doit être entre ${min} et ${max}.`);
         settings[key] = key === "historyRatio" ? value : Math.round(value);
       }
+      if (patch.skipCredits !== undefined) {
+        if (typeof patch.skipCredits !== "boolean") throw new HttpError(400, "skipCredits invalide.");
+        settings.skipCredits = patch.skipCredits;
+      }
       this.store.save();
       // La taille de file / d'historique a pu changer.
       const cached = this.library.cachedEpisodes(this.store.state.currentSeriesId);
@@ -442,17 +495,84 @@ export class PlayerLoop extends EventEmitter {
   /** Change de série ; `playNow` lance immédiatement son premier épisode de file. */
   setSeries(seriesId: string, playNow: boolean): Promise<void> {
     return this.exclusive(async () => {
-      const episodes = await this.library.getEpisodes(seriesId, true);
-      if (episodes.episodes.length === 0) throw new HttpError(400, "Cette série ne contient aucun épisode.");
+      const episodes = await this.loadSource(seriesId, true);
+      // La liste de films peut être choisie vide : on y ajoutera des films ensuite.
+      if (episodes.episodes.length === 0 && seriesId !== MOVIES_SOURCE_ID) {
+        throw new HttpError(400, "Cette série ne contient aucun épisode.");
+      }
       this.store.state.currentSeriesId = seriesId;
       this.store.save();
       this.log.info(`Série sélectionnée : ${episodes.seriesName || seriesId}.`);
       await this.ensureSeries();
-      if (playNow && this.session && this.jellyfin === "ok") {
+      if (playNow && this.session && this.jellyfin === "ok" && episodes.episodes.length > 0) {
         await this.advance(this.session, episodes, { stopFirst: false });
       }
       this.refreshSoon();
     });
+  }
+
+  // --- Liste « Films déjà vus » -------------------------------------------------
+
+  /** Enregistre la liste et remet la file de la source « films » en accord avec elle. */
+  private async moviesChanged(): Promise<void> {
+    this.store.save();
+    if (this.store.state.currentSeriesId === MOVIES_SOURCE_ID) await this.ensureSeries().catch(() => undefined);
+    this.publish();
+  }
+
+  /** Ajoute des films à la liste (seuls ceux qui existent dans Jellyfin). Renvoie le nombre ajouté. */
+  addMovies(ids: string[]): Promise<number> {
+    return this.exclusive(async () => {
+      const known = new Set((await this.library.listMovies()).map((movie) => movie.info.id));
+      const list = this.store.state.movies;
+      const have = new Set(list);
+      const added = [...new Set(ids)].filter((id) => known.has(id) && !have.has(id));
+      if (added.length > 0) {
+        list.push(...added);
+        this.log.info(`Films ajoutés à la liste : ${added.length}.`);
+        await this.moviesChanged();
+      }
+      return added.length;
+    });
+  }
+
+  removeMovie(id: string): Promise<void> {
+    return this.exclusive(async () => {
+      const list = this.store.state.movies;
+      const index = list.indexOf(id);
+      if (index < 0) throw new HttpError(404, "Film absent de la liste.");
+      list.splice(index, 1);
+      await this.moviesChanged();
+    });
+  }
+
+  /** Ajoute à la liste tous les films marqués « vus » dans Jellyfin. Renvoie le nombre ajouté. */
+  importPlayedMovies(): Promise<number> {
+    return this.exclusive(async () => {
+      const played = (await this.library.listMovies(true)).filter((movie) => movie.played).map((movie) => movie.info.id);
+      const list = this.store.state.movies;
+      const have = new Set(list);
+      const added = played.filter((id) => !have.has(id));
+      if (added.length > 0) {
+        list.push(...added);
+        this.log.info(`Films vus importés depuis Jellyfin : ${added.length}.`);
+        await this.moviesChanged();
+      }
+      return added.length;
+    });
+  }
+
+  /** Films de la bibliothèque, avec leur présence dans la liste et leur statut « vu » dans Jellyfin. */
+  async movies(): Promise<MovieSummary[]> {
+    const inList = new Set(this.store.state.movies);
+    return (await this.library.listMovies()).map(({ info, played }) => ({
+      id: info.id,
+      name: info.name,
+      year: info.year,
+      runTimeSec: info.runTimeSec,
+      played,
+      inList: inList.has(info.id),
+    }));
   }
 
   // --- File et historique -------------------------------------------------------
@@ -524,6 +644,7 @@ export class PlayerLoop extends EventEmitter {
     const item = session?.NowPlayingItem;
     const playState = session?.PlayState ?? {};
     const tracks = item ? this.library.cachedTracks(item.Id) : undefined;
+    const creditsAt = item ? this.creditsTicks(item) : undefined;
     const lim = queue.limits(episodes?.episodes.length ?? 0, settings);
 
     return {
@@ -540,13 +661,19 @@ export class PlayerLoop extends EventEmitter {
       },
       settings: { ...settings },
       series: episodes
-        ? { id: episodes.seriesId, name: episodes.seriesName, episodeCount: episodes.episodes.length }
+        ? {
+            id: episodes.seriesId,
+            name: episodes.seriesName,
+            episodeCount: episodes.episodes.length,
+            kind: episodes.seriesId === MOVIES_SOURCE_ID ? "movies" : "series",
+          }
         : null,
+      movieCount: this.store.state.movies.length,
       nowPlaying: item
         ? {
             ...(episodes?.byId.get(item.Id) ?? toEpisodeInfo(item)),
-            type: item.Type,
             positionSec: (playState.PositionTicks ?? 0) / TICKS_PER_SECOND,
+            creditsStartSec: creditsAt === undefined ? undefined : creditsAt / TICKS_PER_SECOND,
             isPaused: playState.IsPaused ?? false,
             canSeek: playState.CanSeek ?? true,
             managed: item.Id === this.store.state.lastStarted?.id,
@@ -592,7 +719,8 @@ export class PlayerLoop extends EventEmitter {
   }
 }
 
-function code(info: EpisodeInfo): string {
+function label(info: EpisodeInfo): string {
+  if (info.type === "Movie") return info.year ? `${info.name} (${info.year})` : info.name;
   const pad = (n?: number) => String(n ?? 0).padStart(2, "0");
-  return `S${pad(info.season)}E${pad(info.episode)}`;
+  return `S${pad(info.season)}E${pad(info.episode)} - ${info.name}`;
 }

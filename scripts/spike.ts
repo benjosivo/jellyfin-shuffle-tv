@@ -50,6 +50,43 @@ try {
 console.log(`Identité de l'application : Client="${config.identity.client}", DeviceId="${config.identity.deviceId}"`);
 console.log(`Utilisateur attendu pour MPV Shim : ${config.userName ?? "(aucun)"}`);
 
+// 1 bis. Générique des films (--credits <id>) ---------------------------------------
+
+const creditsFlag = process.argv.indexOf("--credits");
+if (creditsFlag >= 0) {
+  title("Générique des films (Media Segments / Intro Skipper)");
+  const movieId = process.argv[creditsFlag + 1];
+  if (!movieId || movieId.startsWith("--")) {
+    console.log("Indiquer un film : npm run spike -- --credits <id>. Quelques films de la bibliothèque :");
+    for (const movie of (await client.listMovies()).slice(0, 10)) console.log(`  ${movie.Id}  ${movie.Name ?? "?"}`);
+    await finish(0);
+  }
+  try {
+    const movie = await client.getItem(movieId!);
+    const runtimeSec = (movie.RunTimeTicks ?? 0) / TICKS_PER_SECOND;
+    console.log(`Film : ${movie.Name ?? movieId} (${Math.round(runtimeSec / 60)} min)`);
+    const raw = await client.json<unknown>("GET", `/MediaSegments/${encodeURIComponent(movieId!)}`);
+    console.log(`Réponse brute de /MediaSegments : ${JSON.stringify(raw)}`);
+    const outros = await client.getOutroSegments(movieId!);
+    const starts = outros.map((s) => (s.StartTicks ?? 0) / TICKS_PER_SECOND).filter((s) => s > 0);
+    if (starts.length === 0) {
+      console.log("Aucun segment « Outro » : l'application coupera 30 s avant la fin (réglage « Changer à »).");
+      console.log("→ Intro Skipper doit analyser les films et détecter le générique (« credits »), puis sa tâche planifiée doit avoir tourné.");
+    } else {
+      const start = Math.min(...starts);
+      const ratio = runtimeSec > 0 ? start / runtimeSec : 0;
+      console.log(`Début du générique : ${Math.floor(start / 60)} min ${Math.round(start % 60)} s (${Math.round(ratio * 100)} % du film)`);
+      if (ratio < 0.5) console.log("⚠ Avant la moitié du film : l'application ignorera ce segment (détection jugée fausse).");
+    }
+    report.credits = { movieId, name: movie.Name, runtimeSec, raw, outros };
+  } catch (err) {
+    console.log(`Lecture des segments impossible : ${(err as Error).message}`);
+    console.log("(Jellyfin ≥ 10.10 est nécessaire pour l'API Media Segments.)");
+    await finish(1);
+  }
+  await finish(0);
+}
+
 // 2. Sessions ------------------------------------------------------------------
 
 title("Sessions");

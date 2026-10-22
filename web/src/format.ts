@@ -2,7 +2,9 @@ import type { EpisodeInfo } from "../../src/shared/types";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
-export function episodeCode(e: Pick<EpisodeInfo, "season" | "episode">): string {
+/** « S01E02 » pour un épisode, l'année pour un film. */
+export function episodeCode(e: Pick<EpisodeInfo, "season" | "episode" | "type" | "year">): string {
+  if (e.type === "Movie") return e.year ? String(e.year) : "";
   if (e.season === undefined && e.episode === undefined) return "";
   return `S${pad(e.season ?? 0)}E${pad(e.episode ?? 0)}`;
 }

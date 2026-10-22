@@ -28,6 +28,9 @@ export function StatusBanner({ state, connection, onOpenSetup }: { state: Public
       </div>
     );
   }
+  if (state.series?.kind === "movies" && state.series.episodeCount === 0) {
+    return <div className="banner banner-warn">La liste de films est vide : ajouter des films ci-dessous.</div>;
+  }
   if (!state.series && state.jellyfin === "ok") {
     return <div className="banner banner-warn">Aucune série sélectionnée : en choisir une dans les réglages.</div>;
   }

@@ -43,7 +43,7 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
       <h2>Réglages</h2>
 
       <label className="field">
-        <span>Série</span>
+        <span>Source</span>
         <select value={state.series?.id ?? ""} onFocus={loadSeries} onChange={(e) => changeSeries(e.target.value)}>
           {!state.series && <option value="">— choisir —</option>}
           {state.series && !series?.some((s) => s.id === state.series!.id) && (
@@ -57,7 +57,11 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
           ))}
         </select>
       </label>
-      {state.series && <p className="hint">{state.series.episodeCount} épisodes · l'historique et la file de chaque série sont conservés.</p>}
+      {state.series && (
+        <p className="hint">
+          {state.series.episodeCount} {state.series.kind === "movies" ? "films" : "épisodes"} · l'historique et la file de chaque source sont conservés.
+        </p>
+      )}
 
       <label className="toggle">
         <input type="checkbox" checked={state.settings.autoMode} onChange={(e) => run(() => api.post("/auto", { enabled: e.target.checked }))} />
@@ -65,6 +69,15 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
         <span>
           Mode auto
           <small>Enchaîne les épisodes et coupe avant la fin pour bloquer l'autoplay.</small>
+        </span>
+      </label>
+
+      <label className="toggle">
+        <input type="checkbox" checked={state.settings.skipCredits} onChange={(e) => run(() => api.patch("/settings", { skipCredits: e.target.checked }))} />
+        <span className="toggle-track" aria-hidden="true" />
+        <span>
+          Passer le générique des films
+          <small>Film suivant dès le début du générique (détecté par Intro Skipper). Sans détection : « Changer à » ci-dessous.</small>
         </span>
       </label>
 

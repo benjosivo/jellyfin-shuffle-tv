@@ -15,6 +15,8 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
   const runtime = np?.runTimeSec ?? 0;
   const progress = runtime > 0 ? Math.min(100, (position / runtime) * 100) : 0;
   const canSeek = Boolean(ready && np?.canSeek && runtime > 0);
+  const credits = np?.creditsStartSec;
+  const creditsPct = credits !== undefined && runtime > 0 ? Math.min(100, (credits / runtime) * 100) : null;
 
   const seek = (event: MouseEvent<HTMLDivElement>) => {
     if (!canSeek) return;
@@ -46,17 +48,21 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
             aria-valuenow={Math.round(position)}
           >
             <div className="progress-fill" style={{ width: `${progress}%` }} />
+            {creditsPct !== null && <div className="progress-credits" style={{ left: `${creditsPct}%` }} />}
           </div>
           <div className="times">
             <span>{duration(position)}</span>
             <span>{runtime > 0 ? `-${duration(runtime - position)}` : "--:--"}</span>
           </div>
+          {credits !== undefined && (
+            <p className="hint">Générique à {duration(credits)} : passage automatique au film suivant.</p>
+          )}
         </>
       ) : (
         <p className="muted empty">
           {state.player === "ok"
             ? state.settings.autoMode
-              ? "Rien en lecture : l'épisode suivant va démarrer."
+              ? "Rien en lecture : la suite va démarrer."
               : "Rien en lecture."
             : "En attente de MPV Shim…"}
         </p>
@@ -74,7 +80,7 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
         >
           {np?.isPaused ? <PlayIcon size={34} /> : <PauseIcon size={34} />}
         </button>
-        <button className="round" disabled={!ready || !state.series} onClick={() => run(() => api.post("/player/skip"))} aria-label="Passer" title="Épisode suivant">
+        <button className="round" disabled={!ready || !state.series} onClick={() => run(() => api.post("/player/skip"))} aria-label="Passer" title="Suivant">
           <NextIcon />
         </button>
       </div>

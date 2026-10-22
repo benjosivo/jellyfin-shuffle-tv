@@ -1,8 +1,13 @@
 // Types partagés entre le backend et le front (imports `type` uniquement côté front).
 
+/** Identifiant de la source virtuelle « Films déjà vus » (traitée comme une série). */
+export const MOVIES_SOURCE_ID = "films-vus";
+
 export interface Settings {
   /** Secondes avant la fin à partir desquelles on passe à l'épisode suivant. */
   changeBeforeEndSec: number;
+  /** Films : passer au suivant dès le début du générique (segment « Outro » d'Intro Skipper). */
+  skipCredits: boolean;
   /** Taille de l'historique, en proportion du nombre d'épisodes de la série. */
   historyRatio: number;
   /** Nombre d'épisodes tirés à l'avance. */
@@ -36,6 +41,10 @@ export interface EpisodeInfo {
   season?: number;
   episode?: number;
   runTimeSec?: number;
+  /** Année de production (films). */
+  year?: number;
+  /** Type Jellyfin (« Episode », « Movie »…). */
+  type?: string;
 }
 
 export interface Track {
@@ -46,8 +55,9 @@ export interface Track {
 }
 
 export interface NowPlaying extends EpisodeInfo {
-  type?: string;
   positionSec: number;
+  /** Film : début du générique (secondes), si Intro Skipper l'a détecté. */
+  creditsStartSec?: number;
   isPaused: boolean;
   canSeek: boolean;
   /** true si l'épisode a été lancé par l'application (sinon : lecture manuelle). */
@@ -70,7 +80,9 @@ export interface PublicState {
   player: PlayerStatus;
   session?: SessionInfo;
   settings: Settings;
-  series: { id: string; name: string; episodeCount: number } | null;
+  series: { id: string; name: string; episodeCount: number; kind: "series" | "movies" } | null;
+  /** Nombre de films dans la liste « déjà vus » (même hors source courante). */
+  movieCount: number;
   nowPlaying: NowPlaying | null;
   volume: number | null;
   muted: boolean;
@@ -92,6 +104,18 @@ export interface SeriesSummary {
   id: string;
   name: string;
   year?: number;
+  kind?: "series" | "movies";
+}
+
+export interface MovieSummary {
+  id: string;
+  name: string;
+  year?: number;
+  runTimeSec?: number;
+  /** Marqué « vu » dans Jellyfin. */
+  played: boolean;
+  /** Présent dans la liste de l'application. */
+  inList: boolean;
 }
 
 export interface LogLine {

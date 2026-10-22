@@ -9,6 +9,8 @@ export interface PersistedState {
   currentSeriesId: string;
   settings: Settings;
   series: Record<string, SeriesState>;
+  /** Films de la liste « déjà vus » (IDs Jellyfin). */
+  movies: string[];
   /** Dernier épisode lancé par l'application : sert à le reconnaître après un redémarrage. */
   lastStarted?: { id: string; seriesId: string; at: number };
   /** IDs de l'ancien fichier `history`, rattachés à la série par défaut au premier contact. */
@@ -17,6 +19,7 @@ export interface PersistedState {
 
 export const DEFAULT_SETTINGS: Settings = {
   changeBeforeEndSec: 30,
+  skipCredits: true,
   historyRatio: 0.95,
   queueSize: 5,
   pollIntervalMs: 3000,
@@ -137,6 +140,7 @@ export function normalize(input: unknown): PersistedState {
     }
   }
   if (typeof settingsIn.autoMode === "boolean") settings.autoMode = settingsIn.autoMode;
+  if (typeof settingsIn.skipCredits === "boolean") settings.skipCredits = settingsIn.skipCredits;
 
   const series: Record<string, SeriesState> = {};
   const seriesIn = (raw.series && typeof raw.series === "object" ? raw.series : {}) as Record<string, unknown>;
@@ -161,6 +165,9 @@ export function normalize(input: unknown): PersistedState {
     currentSeriesId: typeof raw.currentSeriesId === "string" ? raw.currentSeriesId : "",
     settings,
     series,
+    movies: Array.isArray(raw.movies)
+      ? [...new Set(raw.movies.filter((item): item is string => typeof item === "string"))]
+      : [],
   };
   const last = raw.lastStarted as PersistedState["lastStarted"] | undefined;
   if (last && typeof last.id === "string") state.lastStarted = last;

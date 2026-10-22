@@ -15,6 +15,7 @@ describe("Store", () => {
     const saved = JSON.parse(await fs.readFile(path.join(dir, "state.json"), "utf8"));
     expect(saved.settings).toEqual({
       changeBeforeEndSec: 30,
+      skipCredits: true,
       historyRatio: 0.95,
       queueSize: 5,
       pollIntervalMs: 3000,
@@ -66,5 +67,15 @@ describe("normalize", () => {
     expect(state.settings.queueSize).toBe(50);
     expect(state.settings.historyRatio).toBe(0.5);
     expect(state.settings.autoMode).toBe(false);
+  });
+
+  it("lit la liste de films et skipCredits ; un ancien fichier sans ces clés reste valide", () => {
+    const state = normalize({ movies: ["a", "b", "a", 7], settings: { skipCredits: false } });
+    expect(state.movies).toEqual(["a", "b"]);
+    expect(state.settings.skipCredits).toBe(false);
+
+    const old = normalize({ currentSeriesId: "s", settings: { autoMode: true } });
+    expect(old.movies).toEqual([]);
+    expect(old.settings.skipCredits).toBe(true);
   });
 });

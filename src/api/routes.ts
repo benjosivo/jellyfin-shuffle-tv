@@ -6,11 +6,11 @@ import { JellyfinError, type JellyfinClient } from "../jellyfin/client.js";
 import { describeSession, explainSessions } from "../jellyfin/session.js";
 import { log } from "../log.js";
 import { accessUrls, isLoopback } from "../net.js";
-import type { Library } from "../player/library.js";
+import { MOVIES_SOURCE_NAME, type Library } from "../player/library.js";
 import type { PlayerLoop } from "../player/loop.js";
 import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
-import type { AccessInfo, Settings } from "../shared/types.js";
+import { MOVIES_SOURCE_ID, type AccessInfo, type SeriesSummary, type Settings } from "../shared/types.js";
 import { traySummary } from "../tray/status.js";
 import { createEventsHandler } from "./events.js";
 
@@ -108,13 +108,36 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
     for (const key of ["changeBeforeEndSec", "historyRatio", "queueSize", "pollIntervalMs"] as const) {
       if (body[key] !== undefined) patch[key] = body[key];
     }
+    if (body.skipCredits !== undefined) patch.skipCredits = body.skipCredits;
     res.json(await loop.updateSettings(patch));
   });
 
   // --- Séries -------------------------------------------------------------------
 
   api.get("/series", async (_req, res) => {
-    res.json(await library.listSeries(true));
+    // La liste « Films déjà vus » est proposée comme une série, en tête.
+    const movies: SeriesSummary = { id: MOVIES_SOURCE_ID, name: MOVIES_SOURCE_NAME, kind: "movies" };
+    res.json([movies, ...(await library.listSeries(true))]);
+  });
+
+  // --- Films déjà vus -----------------------------------------------------------
+
+  api.get("/movies", async (_req, res) => {
+    res.json(await loop.movies());
+  });
+  api.post("/movies/list", async (req, res) => {
+    const ids = req.body?.ids;
+    if (!Array.isArray(ids) || !ids.every((id) => typeof id === "string" && ITEM_ID.test(id))) {
+      throw new HttpError(400, "ids (liste d'IDs de films) requis.");
+    }
+    res.json({ added: await loop.addMovies(ids) });
+  });
+  api.delete("/movies/list/:id", async (req, res) => {
+    await loop.removeMovie(String(req.params.id));
+    res.status(204).end();
+  });
+  api.post("/movies/import-played", async (_req, res) => {
+    res.json({ added: await loop.importPlayedMovies() });
   });
 
   api.put("/series", async (req, res) => {

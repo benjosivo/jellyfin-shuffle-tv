@@ -38,6 +38,18 @@ export interface JfItem {
   RunTimeTicks?: number;
   ProductionYear?: number;
   MediaStreams?: JfMediaStream[];
+  UserData?: { Played?: boolean };
+}
+
+/** Segment de média (API Media Segments, Jellyfin ≥ 10.10) : ex. « Outro » = générique de fin. */
+export interface JfMediaSegment {
+  Type?: string;
+  StartTicks?: number;
+  EndTicks?: number;
+}
+
+export interface JfMediaSegmentsResult {
+  Items?: JfMediaSegment[];
 }
 
 export interface JfSession {

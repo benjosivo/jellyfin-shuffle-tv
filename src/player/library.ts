@@ -1,13 +1,24 @@
 import type { JellyfinApi } from "../jellyfin/client.js";
 import type { JfItem } from "../jellyfin/types.js";
 import { TICKS_PER_SECOND } from "../jellyfin/types.js";
-import type { EpisodeInfo, SeriesSummary, Track } from "../shared/types.js";
+import { MOVIES_SOURCE_ID, type EpisodeInfo, type MovieSummary, type SeriesSummary, type Track } from "../shared/types.js";
 
 // Caches de la bibliothèque Jellyfin : séries, épisodes par série, pistes par épisode.
 
 const EPISODES_TTL_MS = 60 * 60 * 1000;
 const SERIES_TTL_MS = 10 * 60 * 1000;
+const MOVIES_TTL_MS = 10 * 60 * 1000;
+/** Un « pas de générique » est revérifié de temps en temps : Intro Skipper peut analyser le film plus tard. */
+const NO_CREDITS_TTL_MS = 10 * 60 * 1000;
 const DETAILS_MAX = 50;
+
+export const MOVIES_SOURCE_NAME = "Films déjà vus";
+
+export interface MovieEntry {
+  info: EpisodeInfo;
+  /** Marqué « vu » dans Jellyfin. */
+  played: boolean;
+}
 
 export interface SeriesEpisodes {
   seriesId: string;
@@ -31,6 +42,8 @@ export function toEpisodeInfo(item: JfItem): EpisodeInfo {
     season: item.ParentIndexNumber,
     episode: item.IndexNumber,
     runTimeSec: item.RunTimeTicks ? item.RunTimeTicks / TICKS_PER_SECOND : undefined,
+    year: item.ProductionYear,
+    type: item.Type,
   };
 }
 
@@ -56,6 +69,8 @@ export class Library {
   private episodes = new Map<string, SeriesEpisodes>();
   private series?: { list: SeriesSummary[]; fetchedAt: number };
   private details = new Map<string, ItemTracks>();
+  private movies?: { list: MovieEntry[]; fetchedAt: number };
+  private credits = new Map<string, { startSec: number | null; fetchedAt: number }>();
 
   constructor(
     private readonly api: JellyfinApi,
@@ -66,6 +81,8 @@ export class Library {
     this.episodes.clear();
     this.series = undefined;
     this.details.clear();
+    this.movies = undefined;
+    this.credits.clear();
   }
 
   async listSeries(force = false): Promise<SeriesSummary[]> {
@@ -111,6 +128,39 @@ export class Library {
     }
   }
 
+  /** Tous les films de la bibliothèque (cache de 10 min), triés par titre. */
+  async listMovies(force = false): Promise<MovieEntry[]> {
+    if (!force && this.movies && this.now() - this.movies.fetchedAt < MOVIES_TTL_MS) return this.movies.list;
+    try {
+      const items = await this.api.listMovies();
+      const list = items.map((item) => ({ info: toEpisodeInfo(item), played: item.UserData?.Played ?? false }));
+      this.movies = { list, fetchedAt: this.now() };
+      return list;
+    } catch (err) {
+      // En cas d'erreur réseau, mieux vaut un cache périmé que rien.
+      if (this.movies) return this.movies.list;
+      throw err;
+    }
+  }
+
+  /**
+   * La liste « Films déjà vus » vue comme une série : les films de `ids` encore présents dans Jellyfin.
+   * Recalculée à chaque appel (la liste change à la main), à partir du cache de films.
+   */
+  async movieSource(ids: readonly string[], force = false): Promise<SeriesEpisodes> {
+    const wanted = new Set(ids);
+    const episodes = (await this.listMovies(force)).map((m) => m.info).filter((info) => wanted.has(info.id));
+    const entry: SeriesEpisodes = {
+      seriesId: MOVIES_SOURCE_ID,
+      seriesName: MOVIES_SOURCE_NAME,
+      episodes,
+      byId: new Map(episodes.map((e) => [e.id, e])),
+      fetchedAt: this.now(),
+    };
+    this.episodes.set(MOVIES_SOURCE_ID, entry);
+    return entry;
+  }
+
   /** Épisodes déjà en cache (sans requête), pour construire l'état rapidement. */
   cachedEpisodes(seriesId: string): SeriesEpisodes | undefined {
     return this.episodes.get(seriesId);
@@ -127,5 +177,25 @@ export class Library {
 
   cachedTracks(itemId: string): ItemTracks | undefined {
     return this.details.get(itemId);
+  }
+
+  /** Début du générique de fin (secondes), d'après le premier segment « Outro » ; null si aucun. */
+  async getCredits(itemId: string): Promise<number | null> {
+    const cached = this.credits.get(itemId);
+    if (cached && (cached.startSec !== null || this.now() - cached.fetchedAt < NO_CREDITS_TTL_MS)) {
+      return cached.startSec;
+    }
+    const segments = await this.api.getOutroSegments(itemId);
+    const starts = segments
+      .map((segment) => segment.StartTicks)
+      .filter((ticks): ticks is number => typeof ticks === "number" && ticks > 0);
+    const startSec = starts.length > 0 ? Math.min(...starts) / TICKS_PER_SECOND : null;
+    this.credits.set(itemId, { startSec, fetchedAt: this.now() });
+    if (this.credits.size > DETAILS_MAX) this.credits.delete(this.credits.keys().next().value!);
+    return startSec;
+  }
+
+  cachedCredits(itemId: string): number | null {
+    return this.credits.get(itemId)?.startSec ?? null;
   }
 }

@@ -331,7 +331,13 @@ function SeriesStep({ state, onNext }: { state: PublicState; onNext: () => void 
           {visible.map((s) => (
             <li key={s.id}>
               <button className={s.id === state.series?.id ? "selected" : ""} onClick={() => pick(s.id)}>
-                <img src={`/api/image/${s.id}?maxHeight=160`} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />
+                {s.kind === "movies" ? (
+                  <span className="series-icon" aria-hidden="true">
+                    🎬
+                  </span>
+                ) : (
+                  <img src={`/api/image/${s.id}?maxHeight=160`} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />
+                )}
                 <span>
                   {s.name}
                   {s.year ? <small> {s.year}</small> : null}

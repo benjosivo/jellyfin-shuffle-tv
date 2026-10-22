@@ -696,6 +696,38 @@ code {
   color: var(--muted);
 }
 
+.series-icon {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 2 / 3;
+  border-radius: 8px;
+  background: var(--surface-2);
+  font-size: 2.4rem;
+}
+
+/* --- Films déjà vus ----------------------------------------------------------------- */
+
+.progress-credits {
+  position: absolute;
+  top: 7px;
+  width: 3px;
+  height: 14px;
+  margin-left: -1px;
+  border-radius: 2px;
+  background: var(--warn, #f5a524);
+  pointer-events: none;
+}
+
+.movie-results {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.movie-row-added {
+  opacity: 0.55;
+}
+
 /* --- QR code ---------------------------------------------------------------------- */
 
 .overlay {

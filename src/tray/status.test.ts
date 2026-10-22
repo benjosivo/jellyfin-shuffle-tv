@@ -8,8 +8,8 @@ const base: PublicState = {
   configured: true,
   jellyfin: "ok",
   player: "ok",
-  settings: { changeBeforeEndSec: 30, historyRatio: 0.95, queueSize: 5, pollIntervalMs: 3000, autoMode: true },
-  series: { id: "s", name: "The Office", episodeCount: 200 },
+  settings: { changeBeforeEndSec: 30, historyRatio: 0.95, queueSize: 5, pollIntervalMs: 3000, autoMode: true, skipCredits: true },
+  series: { id: "s", name: "The Office", episodeCount: 200, kind: "series" },
   nowPlaying: null,
   volume: 50,
   muted: false,
@@ -22,6 +22,7 @@ const base: PublicState = {
   historyCount: 0,
   historyLimit: 190,
   sampledAt: 0,
+  movieCount: 0,
   remoteClients: 0,
 };
 const episode = { id: "e", name: "Pilote", seriesName: "The Office", season: 1, episode: 1, positionSec: 10, canSeek: true, managed: true };

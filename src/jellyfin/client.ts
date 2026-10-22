@@ -1,5 +1,5 @@
 import type { Identity } from "../config.js";
-import type { JfItem, JfItemsResult, JfSession, PlaystateCommand } from "./types.js";
+import type { JfItem, JfItemsResult, JfMediaSegment, JfMediaSegmentsResult, JfSession, PlaystateCommand } from "./types.js";
 
 export type JellyfinErrorKind = "unreachable" | "unauthorized" | "http" | "unconfigured";
 
@@ -39,6 +39,9 @@ export interface JellyfinApi {
   getItem(itemId: string): Promise<JfItem>;
   listSeries(): Promise<JfItem[]>;
   listEpisodes(seriesId: string): Promise<JfItem[]>;
+  listMovies(): Promise<JfItem[]>;
+  /** Segments « Outro » (générique de fin) d'un élément ; vide si non analysé ou non supporté. */
+  getOutroSegments(itemId: string): Promise<JfMediaSegment[]>;
 }
 
 export interface PublicSystemInfo {
@@ -249,6 +252,34 @@ export class JellyfinClient implements JellyfinApi {
       timeoutMs: 20000,
     });
     return result.Items;
+  }
+
+  async listMovies(): Promise<JfItem[]> {
+    const userId = await this.getUserId();
+    const result = await this.json<JfItemsResult>("GET", `/Users/${userId}/Items`, {
+      query: {
+        Recursive: true,
+        IncludeItemTypes: "Movie",
+        SortBy: "SortName",
+        Fields: "ProductionYear",
+        Limit: 10000,
+      },
+      timeoutMs: 20000,
+    });
+    return result.Items;
+  }
+
+  async getOutroSegments(itemId: string): Promise<JfMediaSegment[]> {
+    try {
+      const result = await this.json<JfMediaSegmentsResult>("GET", `/MediaSegments/${encodeURIComponent(itemId)}`, {
+        query: { includeSegmentTypes: "Outro" },
+      });
+      return (result.Items ?? []).filter((segment) => segment.Type === "Outro");
+    } catch (err) {
+      // Jellyfin < 10.10 (route absente) ou élément inconnu : pas de générique détecté.
+      if (err instanceof JellyfinError && err.kind === "http" && (err.status === 404 || err.status === 400)) return [];
+      throw err;
+    }
   }
 
   /** Image d'un élément, récupérée côté serveur pour ne jamais exposer le token. */
