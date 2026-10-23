@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: Settings = {
   queueSize: 5,
   pollIntervalMs: 3000,
   autoMode: true,
+  preventSleep: true,
 };
 
 export const SETTING_BOUNDS = {
@@ -141,6 +142,7 @@ export function normalize(input: unknown): PersistedState {
   }
   if (typeof settingsIn.autoMode === "boolean") settings.autoMode = settingsIn.autoMode;
   if (typeof settingsIn.skipCredits === "boolean") settings.skipCredits = settingsIn.skipCredits;
+  if (typeof settingsIn.preventSleep === "boolean") settings.preventSleep = settingsIn.preventSleep;
 
   const series: Record<string, SeriesState> = {};
   const seriesIn = (raw.series && typeof raw.series === "object" ? raw.series : {}) as Record<string, unknown>;

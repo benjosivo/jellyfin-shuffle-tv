@@ -31,7 +31,11 @@ export const StopIcon = ({ size = 22 }: Props) => svg(size, <rect x="5.5" y="5.5
 export const UpIcon = ({ size = 20 }: Props) => svg(size, <path d="M12 19V5M5 12l7-7 7 7" />);
 export const PlusIcon = ({ size = 20 }: Props) => svg(size, <path d="M12 5v14M5 12h14" />);
 export const CloseIcon =({ size = 20 }: Props) => svg(size, <path d="M6 6l12 12M18 6L6 18" />);
-export const CheckIcon = ({ size = 20 }: Props) => svg(size, <path d="M5 12.5l4.5 4.5L19 7.5" />);
+export const MinusIcon = ({ size = 20 }: Props) => svg(size, <path d="M5 12h14" />);
+export const ArrowLeftIcon = ({ size = 20 }: Props) => svg(size, <path d="M19 12H5M12 19l-7-7 7-7" />);
+export const SlidersIcon = ({ size = 22 }: Props) =>
+  svg(size, <path d="M21 5h-7M10 5H3M21 12h-9M8 12H3M21 19h-5M12 19H3M14 3v4M8 10v4M16 17v4" />);
+export const CheckIcon =({ size = 20 }: Props) => svg(size, <path d="M5 12.5l4.5 4.5L19 7.5" />);
 export const ChevronDownIcon = ({ size = 18 }: Props) => svg(size, <path d="M6 9l6 6 6-6" />);
 export const FilmIcon = ({ size = 40 }: Props) =>
   svg(size, <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></>);

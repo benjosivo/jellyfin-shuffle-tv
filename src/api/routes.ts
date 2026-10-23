@@ -11,7 +11,16 @@ import { MOVIES_SOURCE_NAME, type Library } from "../player/library.js";
 import type { PlayerLoop } from "../player/loop.js";
 import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
-import { MOVIES_SOURCE_ID, type AccessInfo, type AppVersion, type AudioStatus, type SeriesSummary, type Settings } from "../shared/types.js";
+import {
+  MOVIES_SOURCE_ID,
+  type AccessInfo,
+  type AppVersion,
+  type AudioStatus,
+  type SeriesSummary,
+  type Settings,
+  type SleepStatus,
+} from "../shared/types.js";
+import type { SleepGuard } from "../sleep.js";
 import { traySummary } from "../tray/status.js";
 import { checkForUpdate, installUpdate } from "../update.js";
 import { APP_INFO } from "../version.js";
@@ -23,11 +32,12 @@ export interface ApiDeps {
   client: JellyfinClient;
   config: ConfigManager;
   setup: Setup;
+  sleepGuard: SleepGuard;
 }
 
 const ITEM_ID = /^[0-9a-f-]{32,36}$/i;
 
-export function createApi({ loop, library, client, config, setup }: ApiDeps): express.Router {
+export function createApi({ loop, library, client, config, setup, sleepGuard }: ApiDeps): express.Router {
   const api = express.Router();
   api.use(express.json({ limit: "64kb" }));
 
@@ -133,6 +143,11 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
     }
   });
 
+  api.get("/sleep", (_req, res) => {
+    const status: SleepStatus = { available: sleepGuard.available };
+    res.json(status);
+  });
+
   api.post("/auto", async (req, res) => {
     const enabled = req.body?.enabled;
     if (typeof enabled !== "boolean") throw new HttpError(400, "enabled (booléen) requis.");
@@ -147,6 +162,7 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
       if (body[key] !== undefined) patch[key] = body[key];
     }
     if (body.skipCredits !== undefined) patch.skipCredits = body.skipCredits;
+    if (body.preventSleep !== undefined) patch.preventSleep = body.preventSleep;
     res.json(await loop.updateSettings(patch));
   });
 

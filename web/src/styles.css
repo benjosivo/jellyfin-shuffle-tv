@@ -55,6 +55,7 @@
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Ubuntu, sans-serif;
   --font-mono: ui-monospace, monospace;
   --font-size-base: 16px;
+  --font-size-display: 2.5rem;
 
   color-scheme: dark;
   font-family: var(--font-sans);
@@ -194,6 +195,11 @@ input:focus-visible,
 
 .icon-button.active {
   color: var(--danger);
+}
+
+.icon-button.current {
+  background: var(--surface-2);
+  color: var(--accent-text);
 }
 
 /* --- Cartes ----------------------------------------------------------------- */
@@ -764,19 +770,151 @@ button.link.danger {
 }
 
 /* --- Réglages ------------------------------------------------------------------- */
+/* Une page à part : titre en grand, groupes de lignes (texte à gauche, contrôle à droite),
+   aucun bouton « Enregistrer ». L'assistant, lui, reste une carte à étapes avec de grands champs. */
 
-.toggle {
-  display: flex;
+.settings {
+  max-width: 40rem;
+  margin: 0 auto;
+}
+
+.page-head {
+  margin: var(--space-2) 0 var(--space-5);
+}
+
+.page-head h1 {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-display);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+button.link.back {
+  display: inline-flex;
   align-items: center;
-  gap: var(--space-3);
-  margin-top: 1rem;
+  gap: var(--space-1);
+  min-height: var(--tap);
+  text-decoration: none;
+}
+
+.group + .group {
+  margin-top: var(--space-5);
+}
+
+.group-title {
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.rows {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-height: var(--tap);
+  padding: var(--space-3) var(--space-4);
+}
+
+.row + .row {
+  border-top: 1px solid var(--border);
+}
+
+.rows > :first-child {
+  border-top-left-radius: calc(var(--radius-lg) - 1px);
+  border-top-right-radius: calc(var(--radius-lg) - 1px);
+}
+
+.rows > :last-child {
+  border-bottom-left-radius: calc(var(--radius-lg) - 1px);
+  border-bottom-right-radius: calc(var(--radius-lg) - 1px);
+}
+
+.row-text {
+  flex: 1 1 8rem;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+
+.row-title {
+  font-weight: 600;
+}
+
+.row-desc {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.row-note {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.row-control {
+  margin-inline-start: auto;
+  flex-shrink: 0;
+}
+
+.row-stack {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.row-stack .field {
+  margin-top: 0;
+}
+
+.row-stack .logs,
+.row-stack .update-changes {
+  margin: 0;
+}
+
+.row-stack > button {
+  align-self: flex-start;
+}
+
+button.small.primary {
+  width: auto;
+  margin-top: 0;
+}
+
+/* Interrupteur : toute la ligne se touche */
+
+.row-toggle {
+  position: relative;
+  flex-wrap: nowrap;
   cursor: pointer;
 }
 
-.toggle input {
+.row-toggle input {
   position: absolute;
   opacity: 0;
   pointer-events: none;
+}
+
+.row-toggle:hover,
+.row-toggle:active {
+  background: var(--surface-2);
+}
+
+.row-toggle:has(input:disabled) {
+  cursor: default;
+  background: none;
+}
+
+.row-toggle:has(input:disabled) .row-text,
+.row-toggle input:disabled + .toggle-track {
+  opacity: 0.45;
 }
 
 .toggle-track {
@@ -788,6 +926,10 @@ button.link.danger {
   border: 1px solid var(--border);
   position: relative;
   transition: background var(--dur-fast);
+}
+
+.row-toggle:hover .toggle-track {
+  background: var(--bg);
 }
 
 .toggle-track::after {
@@ -802,46 +944,79 @@ button.link.danger {
   transition: transform var(--dur-fast), background var(--dur-fast);
 }
 
-.toggle input:checked + .toggle-track {
+.row-toggle input:checked + .toggle-track,
+.row-toggle:hover input:checked + .toggle-track {
   background: color-mix(in srgb, var(--accent) 35%, var(--surface-2));
 }
 
-.toggle input:checked + .toggle-track::after {
+.row-toggle input:checked + .toggle-track::after {
   transform: translateX(1.25rem);
   background: var(--accent);
 }
 
-.toggle input:focus-visible + .toggle-track {
+.row-toggle input[aria-busy="true"] + .toggle-track {
+  opacity: 0.6;
+}
+
+.row-toggle input:focus-visible + .toggle-track {
   outline: var(--ring-width) solid var(--accent-text);
   outline-offset: var(--ring-offset);
 }
 
-.toggle small {
-  display: block;
-  color: var(--muted);
-  font-size: 0.8rem;
-}
+/* Réglage numérique : − valeur + */
 
-.account {
-  display: flex;
+.stepper {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: 1rem;
-  padding-top: 0.75rem;
-  border-top: 1px solid var(--border);
-  min-width: 0;
+  gap: var(--space-2);
 }
 
-.account > div {
-  min-width: 0;
-  overflow-wrap: anywhere;
+.stepper button {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  padding: 0;
 }
 
-.update {
-  display: flex;
-  gap: var(--space-3);
-  margin-top: 0.625rem;
+.stepper button:not(:disabled):hover {
+  border-color: var(--accent-text);
+}
+
+.stepper button:not(:disabled):active {
+  background: color-mix(in srgb, var(--accent) 25%, var(--surface-2));
+}
+
+.stepper-value {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-1);
+  min-width: 3.5rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.stepper-value input {
+  width: 2.5rem;
+  min-height: var(--tap);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-weight: 600;
+  text-align: center;
+}
+
+.stepper-value input:hover {
+  border-color: var(--border);
+}
+
+.stepper-value.has-unit input {
+  width: 2.25rem;
+  text-align: right;
+}
+
+.stepper-value span {
+  color: var(--muted);
 }
 
 .update-changes {

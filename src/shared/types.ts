@@ -16,6 +16,8 @@ export interface Settings {
   pollIntervalMs: number;
   /** Mode auto : la boucle enchaîne les épisodes toute seule. */
   autoMode: boolean;
+  /** Bloque la mise en veille de ce PC tant qu'une lecture est en cours. */
+  preventSleep: boolean;
 }
 
 export interface HistoryEntry {
@@ -201,6 +203,11 @@ export interface UpdateStatus {
 export interface AudioStatus {
   available: boolean;
   compressor: boolean;
+}
+
+/** Blocage de la veille : `available` = ce système sait le faire (Windows, ou Linux avec systemd-inhibit). */
+export interface SleepStatus {
+  available: boolean;
 }
 
 export interface AccessInfo {

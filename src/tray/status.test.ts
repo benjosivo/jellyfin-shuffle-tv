@@ -8,7 +8,7 @@ const base: PublicState = {
   configured: true,
   jellyfin: "ok",
   player: "ok",
-  settings: { changeBeforeEndSec: 30, historyRatio: 0.95, queueSize: 5, pollIntervalMs: 3000, autoMode: true, skipCredits: true },
+  settings: { changeBeforeEndSec: 30, historyRatio: 0.95, queueSize: 5, pollIntervalMs: 3000, autoMode: true, skipCredits: true, preventSleep: true },
   series: { id: "s", name: "The Office", episodeCount: 200, kind: "series" },
   nowPlaying: null,
   volume: 50,

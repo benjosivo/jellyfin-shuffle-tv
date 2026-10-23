@@ -20,6 +20,7 @@ describe("Store", () => {
       queueSize: 5,
       pollIntervalMs: 3000,
       autoMode: true,
+      preventSleep: true,
     });
     expect(store.state.pendingImport).toBeUndefined();
   });
@@ -77,6 +78,12 @@ describe("normalize", () => {
     const old = normalize({ currentSeriesId: "s", settings: { autoMode: true } });
     expect(old.movies).toEqual([]);
     expect(old.settings.skipCredits).toBe(true);
+  });
+
+  it("lit preventSleep, activé par défaut pour un ancien fichier qui ne l'a pas", () => {
+    expect(normalize({ settings: { preventSleep: false } }).settings.preventSleep).toBe(false);
+    expect(normalize({ settings: { autoMode: false } }).settings.preventSleep).toBe(true);
+    expect(normalize({ settings: { preventSleep: "non" } }).settings.preventSleep).toBe(true);
   });
 
   it("garde le point de reprise valide d'une série et rejette les valeurs invalides", () => {

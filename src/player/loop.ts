@@ -588,6 +588,10 @@ export class PlayerLoop extends EventEmitter {
         if (typeof patch.skipCredits !== "boolean") throw new HttpError(400, "skipCredits invalide.");
         settings.skipCredits = patch.skipCredits;
       }
+      if (patch.preventSleep !== undefined) {
+        if (typeof patch.preventSleep !== "boolean") throw new HttpError(400, "preventSleep invalide.");
+        settings.preventSleep = patch.preventSleep;
+      }
       this.store.save();
       // La taille de file / d'historique a pu changer.
       const cached = this.library.cachedEpisodes(this.store.state.currentSeriesId);

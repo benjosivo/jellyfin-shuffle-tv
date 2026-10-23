@@ -89,7 +89,7 @@ Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `
 Les pics de volume soudains (explosions, musique) sont atténués par un filtre mpv (`acompressor` suivi d'un `alimiter`) écrit dans le `mpv.conf` de MPV Shim : `%APPDATA%\jellyfin-mpv-shim` sous Windows, `~/.config/jellyfin-mpv-shim` sous Linux (dossier Flatpak compris). Sur un signal « dialogue faible puis explosion », mesuré avec ffmpeg, l'écart passe d'environ 48 dB à 27 dB, sans écrêtage.
 
 - **À l'installation** il est activé, sauf si `mpv.conf` contient déjà un filtre audio (`af=…`) ou si le compresseur a déjà été réglé (désactivé à la main, il le reste).
-- **Dans l'interface** : Réglages → Compresseur audio. MPV Shim ne lit `mpv.conf` qu'à son démarrage, donc un bouton « Relancer MPV Shim » apparaît ensuite ; la relance coupe la lecture en cours. Le réglage n'est proposé que si l'application tourne sur le même PC que MPV Shim.
+- **Dans l'interface** : Réglages (icône en haut à droite) → Sur ce PC → Compresseur audio. MPV Shim ne lit `mpv.conf` qu'à son démarrage, donc un bouton « Relancer MPV Shim » apparaît ensuite ; la relance coupe la lecture en cours. Le réglage n'est proposé que si l'application tourne sur le même PC que MPV Shim.
 - Seul le bloc entre `# >>> jellyfin-en-boucle` et `# <<< jellyfin-en-boucle` est géré ; le reste du fichier n'est jamais modifié. Une retouche à la main de la ligne `af-append=` du bloc est écrasée au prochain basculement dans l'interface. Désactivé, le bloc reste en commentaire.
 - Le filtre a été validé avec ffmpeg, pas avec un vrai MPV Shim. Si MPV Shim est en sortie audio directe (passthrough), mpv ne filtre rien.
 
@@ -134,7 +134,7 @@ L'application se met à jour toute seule depuis le dépôt git : **chaque jour v
 
 Si l'installation ou le build échoue, l'ancienne version est rétablie. Rien n'est fait quand le dossier contient des fichiers suivis modifiés ou des commits non publiés, pour ne jamais écraser un travail local. Les fichiers d'installation (service, tâche planifiée, pare-feu) ne sont pas touchés : après une mise à jour qui les modifie, relancer l'installation.
 
-- Version installée : en bas de **Réglages** (numéro de `package.json` et commit, par exemple `0.1.0 (f96ebaf)`), dans le journal au démarrage, et par `GET /api/version`. Le numéro vient de `package.json` : c'est le seul endroit à modifier pour une nouvelle version.
+- Version installée : dans **Réglages → Application** (numéro de `package.json` et commit, par exemple `0.1.0 (f96ebaf)`), dans le journal au démarrage, et par `GET /api/version`. Le numéro vient de `package.json` : c'est le seul endroit à modifier pour une nouvelle version.
 - À la demande : `deploy/linux/update.sh` ou `powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1`.
 - Journal : `journalctl --user -u jellyfin-office-update` (Linux), `%APPDATA%\jellyfin-office\update.log` (Windows).
 - Désactiver : réinstaller avec `--no-auto-update` / `-NoAutoUpdate` (retire le minuteur ou la tâche), ou arrêter seulement le minuteur : `systemctl --user disable --now jellyfin-office-update.timer` (Linux), `Disable-ScheduledTask -TaskName "Jellyfin en boucle (mise à jour)"` (Windows, en administrateur).
@@ -212,6 +212,10 @@ Depuis le téléphone (ou le PC) :
 Comportement :
 
 - **Mode auto** (réglages) : enchaînement automatique. Désactivé, l'application ne fait plus rien d'elle-même ; les boutons restent utilisables.
+- **Empêcher la mise en veille** (Réglages → Sur ce PC, activé par défaut) : le PC reste éveillé tant qu'une lecture est en cours, pas en pause. La veille redevient possible 90 secondes après l'arrêt ou la pause, pour ne pas la rendre au passage d'un épisode au suivant.
+  - **Windows** : `SetThreadExecutionState` (système et écran), tenu par un petit process PowerShell caché.
+  - **Linux** : verrou `sleep:idle` de `systemd-inhibit`. Sans systemd, le réglage est grisé.
+  - Le verrou est lié au process : si l'application s'arrête, même brutalement, il tombe avec elle.
 - **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard).
 - **Passer** et **Lire maintenant** reprennent toujours la main, même si autre chose a été lancé à la main.
 - Un contenu lancé manuellement sur MPV Shim (depuis l'appli Jellyfin, par exemple) n'est pas interrompu : la boucle reprend quand sa lecture s'arrête.
@@ -291,7 +295,7 @@ Variables d'environnement (dans l'unité systemd, ou avant `npm start`) ; elles 
 | `MPV_SHIM_CONFIG_DIR` | détecté | dossier de configuration de MPV Shim (là où se trouve `mpv.conf`, pour le compresseur audio) |
 | `JELLYFIN_OFFICE_DIR` | voir plus haut | dossier de configuration |
 
-Le choix manuel du lecteur est aussi possible dans l'assistant (Réglages → Serveur & compte → MPV Shim).
+Le choix manuel du lecteur est aussi possible dans l'assistant (Réglages → Serveur et compte → Modifier → MPV Shim).
 
 ## Dépannage
 
@@ -327,6 +331,7 @@ src/
   store.ts              state.json (écriture atomique, migration)
   setup.ts              assistant de configuration
   audio.ts              compresseur audio (bloc de mpv.conf) et relance de MPV Shim
+  sleep.ts              blocage de la mise en veille pendant la lecture (Windows, Linux)
   revoke.ts, cli/       révocation des jetons Jellyfin (désinstallation, déconnexion)
   tray/                 icône d'état : résumé (GET /api/tray), dessin, version Linux (D-Bus)
   api/routes.ts         API REST
@@ -351,7 +356,8 @@ GET    /api/audio                 { available, compressor } (available : MPV Shi
 PUT    /api/audio/compressor      { enabled }    écrit mpv.conf ; effet après la relance de MPV Shim
 POST   /api/audio/restart-player  relance MPV Shim → { restarted } (false s'il ne tournait pas)
 POST   /api/auto                  { enabled }
-PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs?, skipCredits? }
+PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs?, skipCredits?, preventSleep? }
+GET    /api/sleep                 { available } (ce système sait bloquer la veille)
 GET    /api/series                la source « films-vus » est en tête de liste
 PUT    /api/series                { seriesId, playNow? }      seriesId = "films-vus" pour la liste de films
 GET    /api/episodes              épisodes de la série courante (+ vu / en file / en cours)

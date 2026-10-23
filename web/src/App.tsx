@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AccessInfo } from "../../src/shared/types";
 import { api } from "./api";
 import { EpisodesPanel } from "./components/EpisodesPanel";
@@ -7,9 +7,10 @@ import { MoviesPanel } from "./components/MoviesPanel";
 import { NowPlayingPanel } from "./components/NowPlayingPanel";
 import { QrOverlay } from "./components/QrOverlay";
 import { QueuePanel } from "./components/QueuePanel";
-import { SettingsPanel } from "./components/SettingsPanel";
+import { SettingsPage } from "./components/SettingsPage";
 import { SetupWizard } from "./components/SetupWizard";
 import { SoundPanel } from "./components/SoundPanel";
+import { SlidersIcon } from "./components/icons";
 import { StatusBanner } from "./components/StatusBanner";
 import { useServerState } from "./useServerState";
 
@@ -18,6 +19,29 @@ export function App() {
   const [access, setAccess] = useState<AccessInfo | null>(null);
   const [showQr, setShowQr] = useState(() => new URLSearchParams(location.search).has("qr"));
   const [wizard, setWizard] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Les réglages ont leur entrée d'historique : « retour » du téléphone les ferme au lieu de quitter l'appli.
+  const settingsPushed = useRef(false);
+
+  useEffect(() => {
+    const onPop = () => {
+      settingsPushed.current = false;
+      setSettingsOpen(false);
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  const openSettings = () => {
+    history.pushState(null, "");
+    settingsPushed.current = true;
+    setSettingsOpen(true);
+    window.scrollTo(0, 0);
+  };
+  const closeSettings = () => {
+    if (settingsPushed.current) history.back();
+    else setSettingsOpen(false);
+  };
 
   useEffect(() => {
     api
@@ -63,6 +87,17 @@ export function App() {
           <span className={`chip ${state.settings.autoMode ? "chip-on" : ""}`}>Auto {state.settings.autoMode ? "on" : "off"}</span>
         )}
         {qrButton}
+        {state.configured && !wizard && (
+          <button
+            className={`icon-button ${settingsOpen ? "current" : ""}`}
+            onClick={settingsOpen ? closeSettings : openSettings}
+            aria-label="Réglages"
+            aria-current={settingsOpen ? "page" : undefined}
+            title="Réglages"
+          >
+            <SlidersIcon />
+          </button>
+        )}
       </header>
 
       {wizard || needsSetup ? (
@@ -70,6 +105,8 @@ export function App() {
           setWizard(false);
           setShowQr(true);
         }} onCancel={needsSetup ? undefined : () => setWizard(false)} />
+      ) : settingsOpen ? (
+        <SettingsPage state={state} onOpenSetup={() => setWizard(true)} onBack={closeSettings} />
       ) : (
         <main>
           <StatusBanner state={state} connection={connection} onOpenSetup={() => setWizard(true)} />
@@ -79,7 +116,6 @@ export function App() {
           {state.series?.kind === "movies" && <MoviesPanel state={state} />}
           <EpisodesPanel state={state} />
           <HistoryPanel state={state} />
-          <SettingsPanel state={state} onOpenSetup={() => setWizard(true)} />
         </main>
       )}
 

@@ -11,6 +11,8 @@ import { accessUrls } from "./net.js";
 import { Library } from "./player/library.js";
 import { PlayerLoop } from "./player/loop.js";
 import { isConfigured, playerMatch, Setup } from "./setup.js";
+import type { PublicState } from "./shared/types.js";
+import { detectAcquire, SleepGuard } from "./sleep.js";
 import { Store } from "./store.js";
 import { APP_INFO, formatVersion } from "./version.js";
 
@@ -36,9 +38,14 @@ async function main(): Promise<void> {
   });
   const setup = new Setup(config, store, loop);
 
+  const sleepGuard = new SleepGuard(await detectAcquire());
+  loop.on("state", (state: PublicState) => {
+    sleepGuard.want(state.settings.preventSleep && state.nowPlaying !== null && !state.nowPlaying.isPaused);
+  });
+
   const app = express();
   app.disable("x-powered-by");
-  app.use("/api", createApi({ loop, library, client, config, setup }));
+  app.use("/api", createApi({ loop, library, client, config, setup, sleepGuard }));
 
   // Front (build Vite) servi en statique, avec repli sur index.html.
   const here = path.dirname(fileURLToPath(import.meta.url));
@@ -71,6 +78,7 @@ async function main(): Promise<void> {
   const shutdown = async (signal: string) => {
     log.info(`Arrêt (${signal}).`);
     loop.stop();
+    sleepGuard.stop();
     httpServer.close();
     await store.flush();
     process.exit(0);
