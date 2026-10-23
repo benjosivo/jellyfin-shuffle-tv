@@ -10,8 +10,9 @@ import { MOVIES_SOURCE_NAME, type Library } from "../player/library.js";
 import type { PlayerLoop } from "../player/loop.js";
 import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
-import { MOVIES_SOURCE_ID, type AccessInfo, type SeriesSummary, type Settings } from "../shared/types.js";
+import { MOVIES_SOURCE_ID, type AccessInfo, type AppVersion, type SeriesSummary, type Settings } from "../shared/types.js";
 import { traySummary } from "../tray/status.js";
+import { APP_INFO } from "../version.js";
 import { createEventsHandler } from "./events.js";
 
 export interface ApiDeps {
@@ -222,6 +223,11 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
     res.set("Content-Type", upstream.headers.get("content-type") ?? "image/jpeg");
     res.set("Cache-Control", "public, max-age=86400");
     res.send(Buffer.from(await upstream.arrayBuffer()));
+  });
+
+  api.get("/version", (_req, res) => {
+    const info: AppVersion = APP_INFO;
+    res.json(info);
   });
 
   // --- Accès depuis le téléphone (QR code) -------------------------------------

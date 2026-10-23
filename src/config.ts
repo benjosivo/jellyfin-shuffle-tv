@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { writeFileAtomic } from "./fsutil.js";
+import { APP_VERSION } from "./version.js";
 
 // Configuration de l'application :
 // - fichiers dans ~/.config/jellyfin-office (Linux) ou %APPDATA%\jellyfin-office (Windows) ;
@@ -38,8 +39,6 @@ export interface Paths {
   logFile: string;
   spikeReport: string;
 }
-
-export const APP_VERSION = "1.0";
 
 /** Identité utilisée par l'ancien script auth.py : un token déjà créé par lui y est lié. */
 export const LEGACY_IDENTITY: Identity = {
@@ -143,8 +142,9 @@ export class ConfigManager {
     return process.env.JELLYFIN_USER || this.file.userName;
   }
 
+  /** Identité enregistrée, avec la version courante de l'application (celle de config.json peut dater d'une ancienne installation). */
   get identity(): Identity {
-    return this.file.identity!;
+    return { ...this.file.identity!, version: APP_VERSION };
   }
 
   get defaultSeriesName(): string {

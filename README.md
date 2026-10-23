@@ -125,6 +125,7 @@ L'application se met à jour toute seule depuis le dépôt git : **chaque jour v
 
 Si l'installation ou le build échoue, l'ancienne version est rétablie. Rien n'est fait quand le dossier contient des fichiers suivis modifiés ou des commits non publiés, pour ne jamais écraser un travail local. Les fichiers d'installation (service, tâche planifiée, pare-feu) ne sont pas touchés : après une mise à jour qui les modifie, relancer l'installation.
 
+- Version installée : en bas de **Réglages** (numéro de `package.json` et commit, par exemple `0.1.0 (f96ebaf)`), dans le journal au démarrage, et par `GET /api/version`. Le numéro vient de `package.json` : c'est le seul endroit à modifier pour une nouvelle version.
 - À la demande : `deploy/linux/update.sh` ou `powershell -ExecutionPolicy Bypass -File deploy\windows\update.ps1`.
 - Journal : `journalctl --user -u jellyfin-office-update` (Linux), `%APPDATA%\jellyfin-office\update.log` (Windows).
 - Désactiver : réinstaller avec `--no-auto-update` / `-NoAutoUpdate` (retire le minuteur ou la tâche), ou arrêter seulement le minuteur : `systemctl --user disable --now jellyfin-office-update.timer` (Linux), `Disable-ScheduledTask -TaskName "Jellyfin en boucle (mise à jour)"` (Windows, en administrateur).
@@ -344,6 +345,7 @@ GET    /api/movies                films de la bibliothèque (+ played, inList)
 POST   /api/movies/list           { ids: string[] }      → { added }
 DELETE /api/movies/list/:id
 POST   /api/movies/import-played  → { added }
+GET    /api/version               { version, commit? }
 GET    /api/queue
 POST   /api/queue/reroll
 POST   /api/queue/play-now        { episodeId }

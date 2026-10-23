@@ -171,6 +171,12 @@ export interface DiscoveredServer {
   address: string;
 }
 
+/** Version de l'application (package.json) et commit du dossier d'installation, s'il est un dépôt git. */
+export interface AppVersion {
+  version: string;
+  commit?: string;
+}
+
 export interface AccessInfo {
   urls: string[];
   primary: string | null;

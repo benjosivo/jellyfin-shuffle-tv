@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { LogLine, PublicState, SeriesSummary } from "../../../src/shared/types";
+import type { AppVersion, LogLine, PublicState, SeriesSummary } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
 
@@ -9,7 +9,11 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
   const [changeBefore, setChangeBefore] = useState(String(state.settings.changeBeforeEndSec));
   const [queueSize, setQueueSize] = useState(String(state.settings.queueSize));
   const [logs, setLogs] = useState<LogLine[] | null>(null);
+  const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
 
+  useEffect(() => {
+    api.get<AppVersion>("/version").then(setAppVersion).catch(() => setAppVersion(null));
+  }, []);
   useEffect(() => setChangeBefore(String(state.settings.changeBeforeEndSec)), [state.settings.changeBeforeEndSec]);
   useEffect(() => setQueueSize(String(state.settings.queueSize)), [state.settings.queueSize]);
 
@@ -120,6 +124,12 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
             </li>
           ))}
         </ul>
+      )}
+      {appVersion && (
+        <p className="hint version">
+          Version {appVersion.version}
+          {appVersion.commit ? ` (${appVersion.commit})` : ""}
+        </p>
       )}
     </section>
   );

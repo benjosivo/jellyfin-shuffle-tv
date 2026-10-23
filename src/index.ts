@@ -12,12 +12,13 @@ import { Library } from "./player/library.js";
 import { PlayerLoop } from "./player/loop.js";
 import { isConfigured, playerMatch, Setup } from "./setup.js";
 import { Store } from "./store.js";
+import { APP_INFO, formatVersion } from "./version.js";
 
 async function main(): Promise<void> {
   const paths = makePaths();
   const config = await ConfigManager.load(paths);
   setLogFile(paths.logFile);
-  log.info("===== DÉMARRAGE JELLYFIN EN BOUCLE =====");
+  log.info(`===== DÉMARRAGE JELLYFIN EN BOUCLE ${formatVersion(APP_INFO)} =====`);
   log.info(`Configuration : ${paths.dir}`);
 
   const store = await Store.open(paths.stateFile, paths.legacyHistoryFile);
