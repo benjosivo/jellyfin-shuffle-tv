@@ -32,6 +32,15 @@ export interface SeriesState {
   queue: string[];
   /** Aléatoire (défaut) ou dans l'ordre de la série. */
   order?: PlayOrder;
+  /** Épisode lancé par l'application puis interrompu : repris à cette position au retour. */
+  resume?: ResumePoint;
+}
+
+export interface ResumePoint {
+  id: string;
+  positionTicks: number;
+  /** Date du relevé (epoch ms). */
+  at: number;
 }
 
 export type JellyfinStatus = "unknown" | "ok" | "unreachable" | "unauthorized";

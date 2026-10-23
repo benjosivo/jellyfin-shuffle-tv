@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import { writeFileAtomic } from "./fsutil.js";
-import type { HistoryEntry, SeriesState, Settings } from "./shared/types.js";
+import type { HistoryEntry, ResumePoint, SeriesState, Settings } from "./shared/types.js";
 
 // Persistance dans state.json (écriture atomique, regroupée par un petit délai).
 
@@ -157,7 +157,22 @@ export function normalize(input: unknown): PersistedState {
         })
       : [];
     const queue = Array.isArray(entry.queue) ? entry.queue.filter((item): item is string => typeof item === "string") : [];
-    series[id] = entry.order === "sequential" ? { history, queue, order: "sequential" } : { history, queue };
+    const next: SeriesState = entry.order === "sequential" ? { history, queue, order: "sequential" } : { history, queue };
+    const resume = entry.resume as Partial<ResumePoint> | null | undefined;
+    if (
+      resume &&
+      typeof resume.id === "string" &&
+      typeof resume.positionTicks === "number" &&
+      Number.isFinite(resume.positionTicks) &&
+      resume.positionTicks >= 0
+    ) {
+      next.resume = {
+        id: resume.id,
+        positionTicks: resume.positionTicks,
+        at: typeof resume.at === "number" && Number.isFinite(resume.at) ? resume.at : 0,
+      };
+    }
+    series[id] = next;
   }
 
   const state: PersistedState = {

@@ -12,6 +12,7 @@ import {
   type MovieSummary,
   type PlayOrder,
   type PublicState,
+  type ResumePoint,
   type SeriesState,
   type Settings,
 } from "../shared/types.js";
@@ -45,7 +46,20 @@ export const IDLE_GRACE_MS = 6000;
 /** Pause entre Stop et PlayNow (comme le script fish). */
 export const STOP_DELAY_MS = 2000;
 
+/** Recul à la reprise d'un épisode interrompu (le temps de se remettre dans l'histoire). */
+export const RESUME_REWIND_SEC = 30;
+/** Écart de position minimal entre deux écritures de la reprise dans state.json. */
+const RESUME_SAVE_STEP_SEC = 15;
+
 const HISTORY_SUMMARY = 20;
+
+function formatClock(totalSec: number): string {
+  const sec = Math.max(0, Math.floor(totalSec));
+  const h = Math.floor(sec / 3600);
+  const mm = String(Math.floor((sec % 3600) / 60)).padStart(h > 0 ? 2 : 1, "0");
+  const ss = String(sec % 60).padStart(2, "0");
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
 
 type Logger = Pick<typeof defaultLog, "info" | "warn" | "error">;
 
@@ -157,6 +171,7 @@ export class PlayerLoop extends EventEmitter {
       this.setJellyfin("ok");
       this.setSession(findPlayerSession(sessions, this.deps.match()));
       this.sampledAt = this.now();
+      if (this.session) this.rememberPosition(this.session);
 
       const episodes = await this.ensureSeries().catch((err) => {
         this.log.warn(`Épisodes indisponibles : ${(err as Error).message}`);
@@ -197,6 +212,51 @@ export class PlayerLoop extends EventEmitter {
     this.session = session;
   }
 
+  /**
+   * Garde la position de l'épisode lancé par nous, pour le reprendre s'il est interrompu
+   * (MPV Shim fermé, PC éteint, Arrêt, changement de série). Indépendant du mode auto.
+   * Un épisode presque fini (ou au générique) n'est plus à reprendre.
+   */
+  private rememberPosition(session: JfSession): void {
+    const last = this.store.state.lastStarted;
+    const item = session.NowPlayingItem;
+    if (!last || !item || item.Id !== last.id || this.now() < this.ignoreUntil) return;
+
+    const position = session.PlayState?.PositionTicks ?? 0;
+    if (position <= 0) return;
+
+    const series = this.store.seriesState(last.seriesId);
+    const runtime = item.RunTimeTicks ?? 0;
+    const creditsAt = this.creditsTicks(item);
+    const finished =
+      (creditsAt !== undefined && position >= creditsAt) ||
+      (runtime > 0 && runtime - position < this.store.settings.changeBeforeEndSec * TICKS_PER_SECOND);
+    if (finished) {
+      if (series.resume?.id === item.Id) {
+        delete series.resume;
+        this.store.save();
+      }
+      return;
+    }
+
+    const previous = series.resume;
+    const moved = previous?.id !== item.Id || Math.abs(position - previous.positionTicks) >= RESUME_SAVE_STEP_SEC * TICKS_PER_SECOND;
+    // Toujours à jour en mémoire (écrit à l'arrêt), mais state.json n'est réécrit que par paliers.
+    series.resume = { id: item.Id, positionTicks: position, at: this.now() };
+    if (moved) this.store.save();
+  }
+
+  /** Point de reprise de la série, s'il existe encore et n'est pas déjà en cours de lecture. */
+  private resumePoint(state: SeriesState, episodes: SeriesEpisodes): ResumePoint | undefined {
+    const point = state.resume;
+    if (!point) return undefined;
+    if (!episodes.byId.has(point.id)) {
+      delete state.resume;
+      return undefined;
+    }
+    return point.id === this.session?.NowPlayingItem?.Id ? undefined : point;
+  }
+
   private async supervise(session: JfSession, episodes: SeriesEpisodes): Promise<void> {
     const settings = this.store.settings;
     const now = this.now();
@@ -226,7 +286,7 @@ export class PlayerLoop extends EventEmitter {
       if (now - this.idleSince < IDLE_GRACE_MS) return;
       this.idleSince = undefined;
       this.log.info("Aucune lecture en cours : lancement de l'épisode suivant.");
-      await this.advance(session, episodes, { stopFirst: false });
+      await this.advance(session, episodes, { stopFirst: false, resume: true });
       return;
     }
     this.idleSince = undefined;
@@ -271,12 +331,15 @@ export class PlayerLoop extends EventEmitter {
     session: JfSession,
     episodes: SeriesEpisodes,
     /** `taken` : file et historique déjà mis à jour par l'appelant (épisode précédent). */
-    opts: { stopFirst: boolean; episodeId?: string; taken?: boolean },
+    /** `resume` : reprend l'épisode interrompu de la série (s'il y en a un) au lieu d'en tirer un nouveau. */
+    opts: { stopFirst: boolean; episodeId?: string; taken?: boolean; resume?: boolean },
   ): Promise<string> {
     const state = this.store.seriesState(episodes.seriesId);
     const ctx = this.queueContext(episodes);
-    const id =
-      opts.taken && opts.episodeId
+    const point = opts.resume && !opts.episodeId ? this.resumePoint(state, episodes) : undefined;
+    const id = point
+      ? point.id
+      : opts.taken && opts.episodeId
         ? opts.episodeId
         : opts.episodeId
           ? queue.takeSpecific(state, opts.episodeId, ctx)
@@ -284,8 +347,14 @@ export class PlayerLoop extends EventEmitter {
     if (!id) throw new HttpError(409, "Aucun épisode disponible dans cette série.");
     this.store.save();
 
+    // Déjà dans l'historique : on ne le retire de rien, on le relance en reculant un peu.
+    const startTicks = point ? Math.max(0, point.positionTicks - RESUME_REWIND_SEC * TICKS_PER_SECOND) : 0;
     const info = episodes.byId.get(id);
-    this.log.info(`Épisode choisi : ${info ? label(info) : id}`);
+    this.log.info(
+      point
+        ? `Reprise de ${info ? label(info) : id} à ${formatClock(startTicks / TICKS_PER_SECOND)}.`
+        : `Épisode choisi : ${info ? label(info) : id}`,
+    );
 
     if (opts.stopFirst) {
       try {
@@ -297,9 +366,9 @@ export class PlayerLoop extends EventEmitter {
     }
 
     try {
-      await this.api.play(session.Id, id);
+      await this.api.play(session.Id, id, startTicks);
     } catch (err) {
-      if (!opts.taken) queue.undoTake(state, id, ctx);
+      if (!opts.taken && !point) queue.undoTake(state, id, ctx);
       this.store.save();
       this.ignoreUntil = this.now() + SETTLE_MS;
       this.log.error(`Lancement impossible : ${(err as Error).message}`);
@@ -307,6 +376,8 @@ export class PlayerLoop extends EventEmitter {
     }
 
     const now = this.now();
+    // Un autre épisode que celui interrompu : l'ancien point de reprise est abandonné.
+    if (state.resume && state.resume.id !== id) delete state.resume;
     this.store.state.lastStarted = { id, seriesId: episodes.seriesId, at: now };
     this.store.save();
     this.ignoreUntil = now + SETTLE_MS;
@@ -543,7 +614,7 @@ export class PlayerLoop extends EventEmitter {
       this.log.info(`Série sélectionnée : ${episodes.seriesName || seriesId}.`);
       await this.ensureSeries();
       if (playNow && this.session && this.jellyfin === "ok" && episodes.episodes.length > 0) {
-        await this.advance(this.session, episodes, { stopFirst: false });
+        await this.advance(this.session, episodes, { stopFirst: false, resume: true });
       }
       this.refreshSoon();
     });

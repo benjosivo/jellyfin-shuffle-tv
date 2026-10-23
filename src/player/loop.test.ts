@@ -40,6 +40,8 @@ const outro = (startSec: number): JfMediaSegment[] => [{ Type: "Outro", StartTic
 
 class FakeJellyfin implements JellyfinApi {
   calls: string[] = [];
+  /** Position de départ demandée à chaque `play`, dans l'ordre. */
+  startTicks: number[] = [];
   playing?: { item: JfItem; position: number; paused: boolean };
   reachable = true;
   failPlay = false;
@@ -73,13 +75,14 @@ class FakeJellyfin implements JellyfinApi {
       this.session(),
     ] as JfSession[];
   }
-  async play(sessionId: string, itemId: string) {
+  async play(sessionId: string, itemId: string, startPositionTicks = 0) {
     this.calls.push(`play:${sessionId}:${itemId}`);
+    this.startTicks.push(startPositionTicks);
     if (this.failPlay) throw new JellyfinError("http", "boom", 500);
     const item =
       this.items.find((i) => i.Id === itemId) ??
       this.movies.find((i) => i.Id === itemId) ?? { Id: itemId, Name: itemId, RunTimeTicks: 1300 * SEC };
-    this.playing = { item, position: 0, paused: false };
+    this.playing = { item, position: startPositionTicks, paused: false };
   }
   async playstate(sessionId: string, command: string, query?: Record<string, unknown>) {
     this.calls.push(`playstate:${sessionId}:${command}${query ? ":" + JSON.stringify(query) : ""}`);
@@ -316,6 +319,110 @@ describe("PlayerLoop", () => {
     await store.flush();
     const reopened = await Store.open(path.join(dir, "state.json"));
     expect(reopened.state.lastStarted?.id).toBe(current);
+  });
+
+  describe("reprise de l'épisode interrompu", () => {
+    const idleThenTick = async () => {
+      await loop.tick(); // détecte l'inactivité
+      advance(IDLE_GRACE_MS);
+      await loop.tick(); // relance
+    };
+
+    it("MPV Shim fermé : relance le même épisode 30 s avant la coupure, sans toucher à l'historique", async () => {
+      await startFirst();
+      const id = fake.playing!.item.Id;
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+      fake.playing = undefined;
+
+      await idleThenTick();
+      expect(plays().at(-1)).toBe(`play:sess-mpv:${id}`);
+      expect(fake.startTicks.at(-1)).toBe(570 * SEC);
+      expect(loop.snapshot().historyCount).toBe(1);
+    });
+
+    it("la position survit à un redémarrage de l'application", async () => {
+      await startFirst();
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+      await store.flush();
+      const reopened = await Store.open(path.join(dir, "state.json"));
+      expect(reopened.seriesState(SERIES).resume).toMatchObject({ id: fake.playing!.item.Id, positionTicks: 600 * SEC });
+    });
+
+    it("Arrêt puis mode auto réactivé : reprend l'épisode arrêté", async () => {
+      await startFirst();
+      const id = fake.playing!.item.Id;
+      fake.playing!.position = 900 * SEC;
+      await loop.tick();
+      await loop.stopPlayback();
+      await loop.setAutoMode(true);
+
+      await idleThenTick();
+      expect(plays().at(-1)).toBe(`play:sess-mpv:${id}`);
+      expect(fake.startTicks.at(-1)).toBe(870 * SEC);
+    });
+
+    it("changer de série puis revenir : chaque série reprend son épisode", async () => {
+      fake.movies = movies(4);
+      await loop.addMovies(["mv1", "mv2"]);
+      await startFirst();
+      const episodeId = fake.playing!.item.Id;
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+
+      await loop.setSeries(MOVIES_SOURCE_ID, true);
+      expect(fake.playing!.item.Id).toMatch(/^mv/);
+      expect(fake.startTicks.at(-1)).toBe(0);
+      advance(SETTLE_MS);
+      await loop.tick();
+
+      await loop.setSeries(SERIES, true);
+      expect(fake.playing!.item.Id).toBe(episodeId);
+      expect(fake.startTicks.at(-1)).toBe(570 * SEC);
+    });
+
+    it("passer abandonne l'épisode interrompu", async () => {
+      await startFirst();
+      const first = fake.playing!.item.Id;
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+      await loop.skip();
+      expect(store.seriesState(SERIES).resume).toBeUndefined();
+      expect(fake.playing!.item.Id).not.toBe(first);
+    });
+
+    it("un épisode presque fini n'est pas repris", async () => {
+      await startFirst();
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+      await loop.setAutoMode(false);
+      fake.playing!.position = 1290 * SEC; // reste 10 s
+      await loop.tick();
+      expect(store.seriesState(SERIES).resume).toBeUndefined();
+    });
+
+    it("point de reprise sur un épisode disparu : tirage normal", async () => {
+      await loop.tick();
+      store.seriesState(SERIES).resume = { id: "ghost", positionTicks: 100 * SEC, at: 0 };
+      await idleThenTick();
+      expect(plays()).toHaveLength(1);
+      expect(plays()[0]).not.toContain("ghost");
+      expect(fake.startTicks).toEqual([0]);
+      expect(store.seriesState(SERIES).resume).toBeUndefined();
+    });
+
+    it("échec du lancement d'une reprise : le point est conservé et l'historique intact", async () => {
+      await startFirst();
+      const id = fake.playing!.item.Id;
+      fake.playing!.position = 600 * SEC;
+      await loop.tick();
+      fake.playing = undefined;
+      fake.failPlay = true;
+      await idleThenTick();
+      expect(store.seriesState(SERIES).resume?.id).toBe(id);
+      expect(loop.snapshot().historyCount).toBe(1);
+    });
   });
 });
 

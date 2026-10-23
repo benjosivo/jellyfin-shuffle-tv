@@ -78,4 +78,20 @@ describe("normalize", () => {
     expect(old.movies).toEqual([]);
     expect(old.settings.skipCredits).toBe(true);
   });
+
+  it("garde le point de reprise valide d'une série et rejette les valeurs invalides", () => {
+    const state = normalize({
+      series: {
+        ok: { resume: { id: "ep1", positionTicks: 6000, at: 12 } },
+        sansDate: { resume: { id: "ep2", positionTicks: 0 } },
+        negatif: { resume: { id: "ep3", positionTicks: -5, at: 1 } },
+        texte: { resume: { id: "ep4", positionTicks: "10", at: 1 } },
+        sansId: { resume: { positionTicks: 10, at: 1 } },
+        aucun: {},
+      },
+    });
+    expect(state.series.ok?.resume).toEqual({ id: "ep1", positionTicks: 6000, at: 12 });
+    expect(state.series.sansDate?.resume).toEqual({ id: "ep2", positionTicks: 0, at: 0 });
+    for (const key of ["negatif", "texte", "sansId", "aucun"]) expect(state.series[key]?.resume).toBeUndefined();
+  });
 });

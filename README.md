@@ -217,6 +217,7 @@ Comportement :
 - Un contenu lancé manuellement sur MPV Shim (depuis l'appli Jellyfin, par exemple) n'est pas interrompu : la boucle reprend quand sa lecture s'arrête.
 - Un épisode passé compte quand même comme vu.
 - Changer de série conserve l'historique et la file de chaque série.
+- **Reprise.** L'application garde la position de l'épisode (ou du film) qu'elle a lancé, une par série, dans `state.json`. Si la lecture s'interrompt (MPV Shim fermé, PC éteint, **Stop** puis mode auto réactivé) ou si tu changes de série puis reviens, l'épisode repart **30 s avant** l'endroit de l'arrêt, au lieu de passer au suivant. **Passer**, **Précédent** et **Lire maintenant** abandonnent l'épisode interrompu. Un épisode presque fini (moins de `Changer à` secondes) ou au générique n'est pas repris. Un contenu lancé à la main n'est pas suivi : Jellyfin gère sa propre reprise.
 
 ### Films déjà vus et passage du générique
 
@@ -224,7 +225,7 @@ La liste **« Films déjà vus »** est une source comme une série : choisir **
 
 - Un panneau **Films déjà vus** apparaît sous la file : **Ajouter** (recherche par titre dans la bibliothèque, un appui ajoute le film), **✕** pour retirer un film, **Importer les films vus dans Jellyfin** pour ajouter d'un coup tous ceux marqués « vus » dans Jellyfin.
 - La liste est propre à l'application (`state.json`), indépendante du statut « vu » de Jellyfin : un film retiré de la bibliothèque est simplement ignoré.
-- Un film est toujours relancé depuis le début.
+- Un film est lancé depuis le début, sauf s'il a été interrompu : voir **Reprise** plus haut.
 
 **Générique.** Pour un film lancé par l'application, dès que la position atteint le début du générique de fin, l'application fait `Stop` puis lance le film suivant (même mécanisme que la coupe 30 s avant la fin). Le début du générique vient du plugin **Intro Skipper** : l'application lit le segment `Outro` du film via l'API Media Segments de Jellyfin (≥ 10.10).
 
@@ -241,7 +242,7 @@ La liste **« Films déjà vus »** est une source comme une série : choisir **
 
 | Situation | Action |
 |---|---|
-| Rien en lecture depuis 6 s | lance la tête de file |
+| Rien en lecture depuis 6 s | reprend l'épisode interrompu de la série (30 s avant l'arrêt), sinon lance la tête de file |
 | En pause | rien |
 | Contenu lancé à la main | rien, jusqu'à l'arrêt |
 | Durée inconnue (`RunTimeTicks` absent ou 0) | rien |
