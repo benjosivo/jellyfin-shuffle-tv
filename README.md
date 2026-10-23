@@ -212,7 +212,7 @@ Depuis le téléphone (ou le PC) :
 Comportement :
 
 - **Mode auto** (réglages) : enchaînement automatique. Désactivé, l'application ne fait plus rien d'elle-même ; les boutons restent utilisables.
-- **Empêcher la mise en veille** (Réglages → Sur ce PC, activé par défaut) : le PC reste éveillé tant qu'une lecture est en cours, pas en pause. La veille redevient possible 90 secondes après l'arrêt ou la pause, pour ne pas la rendre au passage d'un épisode au suivant.
+- **Empêcher la mise en veille** (Réglages → Sur ce PC, activé par défaut) : le PC reste éveillé tant qu'un contenu est ouvert dans MPV Shim, **même en pause**. La veille redevient possible 90 secondes après l'arrêt, pour ne pas la rendre au passage d'un épisode au suivant.
   - **Windows** : `SetThreadExecutionState` (système et écran), tenu par un petit process PowerShell caché.
   - **Linux** : verrou `sleep:idle` de `systemd-inhibit`. Sans systemd, le réglage est grisé.
   - Le verrou est lié au process : si l'application s'arrête, même brutalement, il tombe avec elle.

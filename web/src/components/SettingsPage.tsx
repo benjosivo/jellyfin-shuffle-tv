@@ -142,7 +142,7 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
           description={
             sleep?.available === false
               ? "Indisponible ici : sous Linux, il faut systemd (commande systemd-inhibit)."
-              : "Garde le PC éveillé pendant la lecture. La veille revient 90 secondes après l'arrêt ou la pause."
+              : "Garde le PC éveillé tant qu'un contenu est ouvert, même en pause. La veille revient 90 secondes après l'arrêt."
           }
           checked={state.settings.preventSleep}
           disabled={sleep?.available === false}

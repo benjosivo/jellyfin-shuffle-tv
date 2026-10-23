@@ -40,7 +40,7 @@ async function main(): Promise<void> {
 
   const sleepGuard = new SleepGuard(await detectAcquire());
   loop.on("state", (state: PublicState) => {
-    sleepGuard.want(state.settings.preventSleep && state.nowPlaying !== null && !state.nowPlaying.isPaused);
+    sleepGuard.want(state.settings.preventSleep && state.nowPlaying !== null);
   });
 
   const app = express();

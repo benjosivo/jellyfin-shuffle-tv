@@ -2,7 +2,7 @@ import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import { log as defaultLog } from "./log.js";
 
-// Blocage de la mise en veille pendant la lecture. Le système n'offre pas d'API Node : on garde en
+// Blocage de la mise en veille tant qu'un contenu est ouvert (en pause aussi). Le système n'offre pas d'API Node : on garde en
 // vie un petit process enfant qui tient le verrou, et on le laisse mourir pour le relâcher.
 //
 // - Windows : PowerShell appelle SetThreadExecutionState (système + écran) et attend sur stdin.
