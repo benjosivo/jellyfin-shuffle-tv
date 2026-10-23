@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import type { DiscoveredServer, PublicState, SeriesSummary, SetupStatus } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
+import { CheckIcon, FilmIcon } from "./icons";
 
 type Step = "server" | "login" | "player" | "series" | "done";
 const STEPS: { id: Step; label: string }[] = [
@@ -82,7 +83,9 @@ export function SetupWizard({ state, onDone, onCancel }: { state: PublicState; o
         {step === "series" && <SeriesStep state={state} onNext={() => go("done")} />}
         {step === "done" && (
           <div className="step">
-            <p className="big">C'est prêt ✓</p>
+            <p className="big">
+              C'est prêt <CheckIcon size={24} />
+            </p>
             <p className="muted">
               {status.playerFound
                 ? "La lecture en boucle va démarrer sur MPV Shim."
@@ -236,7 +239,9 @@ function PlayerStep({ status, refresh, onNext }: { status: SetupStatus; refresh:
   return (
     <div className="step">
       {status.playerFound ? (
-        <div className="banner banner-ok">MPV Shim est connecté ✓</div>
+        <div className="banner banner-ok">
+          <CheckIcon size={16} /> MPV Shim est connecté
+        </div>
       ) : (
         <>
           <p>
@@ -268,7 +273,7 @@ function PlayerStep({ status, refresh, onNext }: { status: SetupStatus; refresh:
               <li key={c.deviceId ?? c.client}>
                 <div>
                   <strong>{c.client ?? "?"}</strong> · {c.deviceName ?? "?"} <span className="muted">({c.userName ?? "?"})</span>
-                  <div className="muted small-text">{c.matches ? "✓ utilisé" : c.reasons.join(" ; ")}</div>
+                  <div className="muted small-text">{c.matches ? "Utilisé" : c.reasons.join(" ; ")}</div>
                 </div>
                 {!c.matches && c.deviceId && (
                   <button className="small" onClick={() => choose(c.deviceId!)}>
@@ -333,7 +338,7 @@ function SeriesStep({ state, onNext }: { state: PublicState; onNext: () => void 
               <button className={s.id === state.series?.id ? "selected" : ""} onClick={() => pick(s.id)}>
                 {s.kind === "movies" ? (
                   <span className="series-icon" aria-hidden="true">
-                    🎬
+                    <FilmIcon />
                   </span>
                 ) : (
                   <img src={`/api/image/${s.id}?maxHeight=160`} alt="" loading="lazy" onError={(e) => (e.currentTarget.style.visibility = "hidden")} />

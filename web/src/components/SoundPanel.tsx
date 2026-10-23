@@ -3,6 +3,7 @@ import type { PublicState, Track } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
 import { VolumeIcon } from "./icons";
+import { Listbox, type ListboxOption } from "./Listbox";
 
 export function SoundPanel({ state }: { state: PublicState }) {
   const run = useAction();
@@ -51,7 +52,7 @@ export function SoundPanel({ state }: { state: PublicState }) {
           onChange={(e) => changeVolume(Number(e.target.value))}
           aria-label="Volume"
         />
-        <span className="volume-value">{state.volume === null ? "–" : volume}</span>
+        <span className="volume-value">{state.volume === null ? "-" : volume}</span>
       </div>
 
       <TrackSelect
@@ -92,20 +93,19 @@ function TrackSelect({
   onChange: (index: number) => void;
 }) {
   const known = current === null || current === -1 || tracks.some((t) => t.index === current);
+  const options: ListboxOption[] = [
+    ...(offOption ? [{ value: "-1", label: "Désactivés" }] : []),
+    ...(!known ? [{ value: String(current), label: `Piste ${current}` }] : []),
+    ...tracks.map((t) => ({ value: String(t.index), label: `${t.label}${t.isDefault ? " (défaut)" : ""}` })),
+  ];
   return (
-    <label className="field">
-      <span>{label}</span>
-      <select value={current ?? ""} disabled={disabled} onChange={(e) => onChange(Number(e.target.value))}>
-        {current === null && <option value="">—</option>}
-        {offOption && <option value={-1}>Désactivés</option>}
-        {!known && <option value={current!}>Piste {current}</option>}
-        {tracks.map((t) => (
-          <option key={t.index} value={t.index}>
-            {t.label}
-            {t.isDefault ? " (défaut)" : ""}
-          </option>
-        ))}
-      </select>
-    </label>
+    <Listbox
+      label={label}
+      value={current === null ? null : String(current)}
+      options={options}
+      placeholder="Aucune"
+      disabled={disabled}
+      onChange={(value) => onChange(Number(value))}
+    />
   );
 }

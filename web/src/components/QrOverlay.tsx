@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { AccessInfo } from "../../../src/shared/types";
-import { CloseIcon } from "./icons";
+import { CheckIcon, CloseIcon } from "./icons";
+import { Listbox } from "./Listbox";
 
 /** Grand QR code pour ouvrir l'interface sur le téléphone. Se ferme quand un téléphone se connecte. */
 export function QrOverlay({
@@ -43,7 +44,9 @@ export function QrOverlay({
         </button>
         {connected ? (
           <div className="qr-connected">
-            <div className="check">✓</div>
+            <div className="check">
+              <CheckIcon size={44} />
+            </div>
             <p>Téléphone connecté</p>
           </div>
         ) : (
@@ -57,13 +60,13 @@ export function QrOverlay({
                   {selected.replace(/\/$/, "")}
                 </a>
                 {access && access.urls.length > 1 && (
-                  <select className="qr-select" value={selected} onChange={(e) => setUrl(e.target.value)} aria-label="Adresse">
-                    {access.urls.map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
-                    ))}
-                  </select>
+                  <Listbox
+                    className="qr-select"
+                    label="Adresse"
+                    value={selected}
+                    options={access.urls.map((u) => ({ value: u, label: u }))}
+                    onChange={setUrl}
+                  />
                 )}
               </>
             ) : (

@@ -31,6 +31,10 @@ export const StopIcon = ({ size = 22 }: Props) => svg(size, <rect x="5.5" y="5.5
 export const UpIcon = ({ size = 20 }: Props) => svg(size, <path d="M12 19V5M5 12l7-7 7 7" />);
 export const PlusIcon = ({ size = 20 }: Props) => svg(size, <path d="M12 5v14M5 12h14" />);
 export const CloseIcon =({ size = 20 }: Props) => svg(size, <path d="M6 6l12 12M18 6L6 18" />);
+export const CheckIcon = ({ size = 20 }: Props) => svg(size, <path d="M5 12.5l4.5 4.5L19 7.5" />);
+export const ChevronDownIcon = ({ size = 18 }: Props) => svg(size, <path d="M6 9l6 6 6-6" />);
+export const FilmIcon = ({ size = 40 }: Props) =>
+  svg(size, <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 4v16M17 4v16M3 9h4M3 15h4M17 9h4M17 15h4" /></>);
 export const ShuffleIcon = ({ size = 18 }: Props) =>
   svg(size, <path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5" />);
 export const VolumeIcon = ({ size = 22, muted = false }: Props & { muted?: boolean }) =>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { AppVersion, LogLine, PublicState, SeriesSummary, UpdateStatus } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
+import { Listbox } from "./Listbox";
 
 export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOpenSetup: () => void }) {
   const run = useAction();
@@ -59,21 +60,17 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
     <section className="card">
       <h2>Réglages</h2>
 
-      <label className="field">
-        <span>Source</span>
-        <select value={state.series?.id ?? ""} onFocus={loadSeries} onChange={(e) => changeSeries(e.target.value)}>
-          {!state.series && <option value="">— choisir —</option>}
-          {state.series && !series?.some((s) => s.id === state.series!.id) && (
-            <option value={state.series.id}>{state.series.name}</option>
-          )}
-          {series?.map((s) => (
-            <option key={s.id} value={s.id}>
-              {s.name}
-              {s.year ? ` (${s.year})` : ""}
-            </option>
-          ))}
-        </select>
-      </label>
+      <Listbox
+        label="Source"
+        value={state.series?.id ?? null}
+        placeholder="Choisir une source"
+        options={[
+          ...(state.series && !series?.some((s) => s.id === state.series!.id) ? [{ value: state.series.id, label: state.series.name }] : []),
+          ...(series ?? []).map((s) => ({ value: s.id, label: `${s.name}${s.year ? ` (${s.year})` : ""}` })),
+        ]}
+        onOpen={loadSeries}
+        onChange={changeSeries}
+      />
       {state.series && (
         <p className="hint">
           {state.series.episodeCount} {state.series.kind === "movies" ? "films" : "épisodes"} · l'historique et la file de chaque source sont conservés.
