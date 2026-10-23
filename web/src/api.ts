@@ -24,8 +24,9 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
     const data = (await response.json().catch(() => ({}))) as { error?: string };
     throw new ApiError(response.status, data.error ?? `Erreur ${response.status}`);
   }
-  if (response.status === 204) return undefined as T;
-  return (await response.json()) as T;
+  // 202/204 : réponse sans corps (ex. POST /update), rien à décoder.
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
 }
 
 export const api = {
