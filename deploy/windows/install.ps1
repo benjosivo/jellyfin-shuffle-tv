@@ -158,6 +158,16 @@ try {
 }
 Ok 'Build terminé.'
 
+# --- 3b. Compresseur audio -----------------------------------------------------------------
+
+Step 'Compresseur audio (MPV Shim)'
+if (Find-MpvShim) {
+  # Activé seulement si rien n'a été décidé : un réglage ou un filtre existant est conservé.
+  & node (Join-Path $AppDir 'dist\server\cli\audio.js') enable-default --dir $MpvShimConfigDir
+} else {
+  Ok 'Ignoré : MPV Shim non installé.'
+}
+
 # --- 4. Démarrage automatique (tâche planifiée au login, sans fenêtre) --------------------
 
 Step 'Démarrage automatique'

@@ -7,7 +7,7 @@ Remplace le script `the-office-random.fish` (et `auth.py`).
 - **Films déjà vus** : une liste de films gérée dans l'application, lue en aléatoire comme une série. Le **générique de fin est passé automatiquement** (voir [Films déjà vus](#films-déjà-vus-et-passage-du-générique)).
 - Interface web mobile :
   - épisode en cours, sauts ±5 / ±15 s, épisode précédent / suivant, pause, barre de progression ;
-  - volume, mute, piste audio, sous-titres ;
+  - volume, mute, piste audio, sous-titres, [compresseur audio](#compresseur-audio) contre les pics de volume ;
   - file des prochains épisodes, liste de tous les épisodes (lire maintenant ou ensuite), historique avec l'heure ;
   - mode aléatoire ou dans l'ordre, choix de la série, mode auto.
 - **Icône d'état** près de l'horloge (lecture, pause, problème, arrêté), avec un menu de commandes.
@@ -52,7 +52,7 @@ Le script (à lancer sans `sudo`, il le demande au besoin) :
 
 1. installe Node.js ≥ 20 s'il manque ou s'il est trop ancien (paquets de la distribution ; dépôt officiel NodeSource sur Debian/Ubuntu) ;
 2. installe **Jellyfin MPV Shim** s'il manque (AUR via `paru`/`yay` sur Arch/CachyOS, sinon Flatpak, sinon `pipx`), le lance, et le fait démarrer à l'ouverture de session ;
-3. installe les dépendances et compile (`npm ci && npm run build`) ;
+3. installe les dépendances et compile (`npm ci && npm run build`), puis active le [compresseur audio](#compresseur-audio) de MPV Shim ;
 4. installe et démarre le service `~/.config/systemd/user/jellyfin-office.service` (`Restart=on-failure`) ;
 5. installe le minuteur de [mise à jour automatique](#mise-à-jour-automatique) (`jellyfin-office-update.timer`) ;
 6. ouvre le port 8787 si `ufw` ou `firewalld` est actif ;
@@ -74,7 +74,7 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 
 1. installe Node.js LTS avec `winget` s'il manque ;
 2. télécharge la dernière version de **Jellyfin MPV Shim** sur GitHub et l'installe **en silence** s'il manque (repli sur l'installeur normal si besoin), le lance, et l'ajoute au dossier Démarrage ;
-3. compile l'application ;
+3. compile l'application, puis active le [compresseur audio](#compresseur-audio) de MPV Shim ;
 4. crée la tâche planifiée « Jellyfin en boucle » (au login, sans fenêtre, relance automatique en cas de plantage) ;
 5. crée la tâche planifiée « Jellyfin en boucle (mise à jour) » ([mise à jour automatique](#mise-à-jour-automatique)) ;
 6. ouvre le port 8787 sur les réseaux privés. Si le réseau est en « public », il **demande toujours** avant de le passer en « privé », même avec `-Yes` : à ne faire que pour le réseau de la maison ;
@@ -83,6 +83,15 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 9. affiche l'**icône d'état** près de l'horloge, et la relance à chaque session.
 
 Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-NoTray`, `-NoAutoUpdate`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+
+### Compresseur audio
+
+Les pics de volume soudains (explosions, musique) sont atténués par un filtre mpv (`acompressor` suivi d'un `alimiter`) écrit dans le `mpv.conf` de MPV Shim : `%APPDATA%\jellyfin-mpv-shim` sous Windows, `~/.config/jellyfin-mpv-shim` sous Linux (dossier Flatpak compris). Sur un signal « dialogue faible puis explosion », mesuré avec ffmpeg, l'écart passe d'environ 48 dB à 27 dB, sans écrêtage.
+
+- **À l'installation** il est activé, sauf si `mpv.conf` contient déjà un filtre audio (`af=…`) ou si le compresseur a déjà été réglé (désactivé à la main, il le reste).
+- **Dans l'interface** : Réglages → Compresseur audio. MPV Shim ne lit `mpv.conf` qu'à son démarrage, donc un bouton « Relancer MPV Shim » apparaît ensuite ; la relance coupe la lecture en cours. Le réglage n'est proposé que si l'application tourne sur le même PC que MPV Shim.
+- Seul le bloc entre `# >>> jellyfin-en-boucle` et `# <<< jellyfin-en-boucle` est géré ; le reste du fichier n'est jamais modifié. Une retouche à la main de la ligne `af-append=` du bloc est écrasée au prochain basculement dans l'interface. Désactivé, le bloc reste en commentaire.
+- Le filtre a été validé avec ffmpeg, pas avec un vrai MPV Shim. Si MPV Shim est en sortie audio directe (passthrough), mpv ne filtre rien.
 
 ### Démarrer / relancer
 
@@ -141,7 +150,7 @@ Par défaut, tout est retiré, secrets compris :
 
 1. **les jetons Jellyfin sont révoqués côté serveur** : celui de l'application et, si MPV Shim est retiré, les siens. Le PC disparaît de la liste des appareils de Jellyfin. Si le serveur est injoignable, les jetons sont quand même effacés du PC ;
 2. service / tâches planifiées (dont la mise à jour automatique), icône d'état, démarrages automatiques, raccourcis, règle de pare-feu (et, sous Windows, le mode « privé » du réseau s'il avait été changé) ;
-3. **MPV Shim et sa configuration, Node.js et les paquets système**, uniquement s'ils ont été installés par l'installation. Ce qui était déjà là avant est laissé en place ;
+3. **MPV Shim et sa configuration, Node.js et les paquets système**, uniquement s'ils ont été installés par l'installation. Ce qui était déjà là avant est laissé en place (si MPV Shim est conservé, le bloc du compresseur audio est retiré de son `mpv.conf`) ;
 4. tout le dossier de configuration : jeton, identifiants, `config.json`, historique, journaux, ancien `history` du script fish ;
 5. `node_modules` et `dist`.
 
@@ -278,6 +287,7 @@ Variables d'environnement (dans l'unité systemd, ou avant `npm start`) ; elles 
 | `PLAYER_DEVICE_ID` | — | `DeviceId` exact de MPV Shim (voir `npm run spike`) ; prioritaire sur la détection |
 | `PLAYER_MATCH` | `mpv` | motif (regex) cherché dans `Client` / `DeviceName` |
 | `DEFAULT_SERIES` | `The Office` | série choisie au premier lancement |
+| `MPV_SHIM_CONFIG_DIR` | détecté | dossier de configuration de MPV Shim (là où se trouve `mpv.conf`, pour le compresseur audio) |
 | `JELLYFIN_OFFICE_DIR` | voir plus haut | dossier de configuration |
 
 Le choix manuel du lecteur est aussi possible dans l'assistant (Réglages → Serveur & compte → MPV Shim).
@@ -315,6 +325,7 @@ src/
   player/library.ts     caches séries / épisodes / films / pistes / génériques
   store.ts              state.json (écriture atomique, migration)
   setup.ts              assistant de configuration
+  audio.ts              compresseur audio (bloc de mpv.conf) et relance de MPV Shim
   revoke.ts, cli/       révocation des jetons Jellyfin (désinstallation, déconnexion)
   tray/                 icône d'état : résumé (GET /api/tray), dessin, version Linux (D-Bus)
   api/routes.ts         API REST
@@ -335,6 +346,9 @@ POST   /api/player/previous       épisode précédent
 POST   /api/player/volume         { volume } | { muted }
 POST   /api/player/audio          { index }
 POST   /api/player/subtitle       { index }      -1 = désactivés
+GET    /api/audio                 { available, compressor } (available : MPV Shim est configuré sur ce PC)
+PUT    /api/audio/compressor      { enabled }    écrit mpv.conf ; effet après la relance de MPV Shim
+POST   /api/audio/restart-player  relance MPV Shim → { restarted } (false s'il ne tournait pas)
 POST   /api/auto                  { enabled }
 PATCH  /api/settings              { changeBeforeEndSec?, queueSize?, historyRatio?, pollIntervalMs?, skipCredits? }
 GET    /api/series                la source « films-vus » est en tête de liste

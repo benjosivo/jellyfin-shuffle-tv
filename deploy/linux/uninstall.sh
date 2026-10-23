@@ -71,6 +71,8 @@ if have node && [[ -f "$APP_DIR/dist/server/cli/uninstall.js" ]]; then
   revoke_args=(--config-dir "$CONFIG_DIR")
   for dir in "${mpv_shim_configs[@]}"; do revoke_args+=(--mpv-shim-config "$dir"); done
   node "$APP_DIR/dist/server/cli/uninstall.js" "${revoke_args[@]}" || warn "Révocation interrompue."
+  # Le compresseur audio ajouté à mpv.conf : retiré, sauf si tout le dossier de MPV Shim part avec lui.
+  [[ -z "$mpv_shim_via" ]] && node "$APP_DIR/dist/server/cli/audio.js" remove
 else
   warn "Node.js ou le build est absent : jetons non révoqués côté serveur (ils sont quand même effacés de ce PC)."
 fi

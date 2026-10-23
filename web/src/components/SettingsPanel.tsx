@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppVersion, LogLine, PublicState, SeriesSummary, UpdateStatus } from "../../../src/shared/types";
+import type { AppVersion, AudioStatus, LogLine, PublicState, SeriesSummary, UpdateStatus } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
 import { Listbox } from "./Listbox";
@@ -13,9 +13,13 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
+  const [audio, setAudio] = useState<AudioStatus | null>(null);
+  const [restartPending, setRestartPending] = useState(false);
+  const [restarting, setRestarting] = useState(false);
 
   useEffect(() => {
     api.get<AppVersion>("/version").then(setAppVersion).catch(() => setAppVersion(null));
+    api.get<AudioStatus>("/audio").then(setAudio).catch(() => setAudio(null));
   }, []);
   useEffect(() => setChangeBefore(String(state.settings.changeBeforeEndSec)), [state.settings.changeBeforeEndSec]);
   useEffect(() => setQueueSize(String(state.settings.queueSize)), [state.settings.queueSize]);
@@ -49,6 +53,21 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
   const installUpdate = async () => {
     const started = await run(() => api.post("/update"), "Mise à jour lancée : l'application redémarre dans quelques minutes.");
     if (started) setUpdate(null);
+  };
+
+  const changeCompressor = async (enabled: boolean) => {
+    const saved = await run(() => api.put("/audio/compressor", { enabled }));
+    if (!saved) return;
+    setAudio((current) => (current ? { ...current, compressor: enabled } : current));
+    setRestartPending(true);
+  };
+  const restartPlayer = async () => {
+    setRestarting(true);
+    await run(async () => {
+      const { restarted } = await api.post<{ restarted: boolean }>("/audio/restart-player");
+      if (restarted) setRestartPending(false);
+    }, "MPV Shim relancé");
+    setRestarting(false);
   };
 
   const toggleLogs = () => {
@@ -94,6 +113,27 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
           <small>Film suivant dès le début du générique (détecté par Intro Skipper). Sans détection : « Changer à » ci-dessous.</small>
         </span>
       </label>
+
+      {audio?.available && (
+        <>
+          <label className="toggle">
+            <input type="checkbox" checked={audio.compressor} onChange={(e) => changeCompressor(e.target.checked)} />
+            <span className="toggle-track" aria-hidden="true" />
+            <span>
+              Compresseur audio
+              <small>Atténue les pics de volume (explosions, musique) par rapport aux dialogues.</small>
+            </span>
+          </label>
+          {restartPending && (
+            <div className="update">
+              <button className="small primary" onClick={restartPlayer} disabled={restarting}>
+                {restarting ? "Relance…" : "Relancer MPV Shim"}
+              </button>
+              <p className="hint">Réglage enregistré. Il s'applique après la relance, qui coupe la lecture en cours.</p>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="field-row">
         <label className="field">

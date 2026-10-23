@@ -1,5 +1,6 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import QRCode from "qrcode";
+import { findMpvShimConfigDir, readCompressor, restartMpvShim, writeCompressor } from "../audio.js";
 import { server as serverConfig } from "../config.js";
 import { HttpError } from "../errors.js";
 import { JellyfinError, type JellyfinClient } from "../jellyfin/client.js";
@@ -10,7 +11,7 @@ import { MOVIES_SOURCE_NAME, type Library } from "../player/library.js";
 import type { PlayerLoop } from "../player/loop.js";
 import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
-import { MOVIES_SOURCE_ID, type AccessInfo, type AppVersion, type SeriesSummary, type Settings } from "../shared/types.js";
+import { MOVIES_SOURCE_ID, type AccessInfo, type AppVersion, type AudioStatus, type SeriesSummary, type Settings } from "../shared/types.js";
 import { traySummary } from "../tray/status.js";
 import { checkForUpdate, installUpdate } from "../update.js";
 import { APP_INFO } from "../version.js";
@@ -106,6 +107,30 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
   api.post("/player/subtitle", async (req, res) => {
     await loop.setSubtitleTrack(integerField(req, "index", -1));
     res.status(204).end();
+  });
+
+  // --- Compresseur audio (mpv.conf de MPV Shim, s'il est sur ce PC) -------------
+
+  api.get("/audio", async (_req, res) => {
+    const dir = await findMpvShimConfigDir();
+    const status: AudioStatus = { available: dir !== undefined, compressor: dir !== undefined && (await readCompressor(dir)) };
+    res.json(status);
+  });
+  api.put("/audio/compressor", async (req, res) => {
+    const enabled = req.body?.enabled;
+    if (typeof enabled !== "boolean") throw new HttpError(400, "enabled (booléen) requis.");
+    const dir = await findMpvShimConfigDir();
+    if (!dir) throw new HttpError(409, "MPV Shim n'est pas configuré sur ce PC : réglage impossible d'ici.");
+    await writeCompressor(dir, enabled);
+    res.status(204).end();
+  });
+  api.post("/audio/restart-player", async (_req, res) => {
+    try {
+      res.json({ restarted: await restartMpvShim() });
+    } catch (err) {
+      log.error(`Relance de MPV Shim impossible : ${(err as Error).message}`);
+      throw new HttpError(500, "Impossible de relancer MPV Shim : ferme-le et rouvre-le à la main.");
+    }
   });
 
   api.post("/auto", async (req, res) => {

@@ -182,6 +182,18 @@ npm ci --no-audit --no-fund
 npm run build
 ok "Build terminé."
 
+# --- 3b. Compresseur audio ----------------------------------------------------------------
+
+step "Compresseur audio (MPV Shim)"
+if [[ -n "$MPV_SHIM_CMD" ]]; then
+  shim_config="$CONFIG_HOME/jellyfin-mpv-shim"
+  [[ "$MPV_SHIM_CMD" == flatpak* ]] && shim_config="$HOME/.var/app/$FLATPAK_ID/config/jellyfin-mpv-shim"
+  # Activé seulement si rien n'a été décidé : un réglage ou un filtre existant est conservé.
+  node "$APP_DIR/dist/server/cli/audio.js" enable-default --dir "$shim_config"
+else
+  ok "Ignoré : MPV Shim non installé."
+fi
+
 # --- 4. Service systemd utilisateur -----------------------------------------------------
 
 step "Service systemd utilisateur"

@@ -66,6 +66,8 @@ if ((Get-Command node -ErrorAction SilentlyContinue) -and (Test-Path $cli)) {
   $revokeArgs = @($cli, '--config-dir', $ConfigDir)
   if ($removeMpvShim) { $revokeArgs += @('--mpv-shim-config', $MpvShimConfigDir) }
   & node @revokeArgs
+  # Le compresseur audio ajouté à mpv.conf : retiré, sauf si tout le dossier de MPV Shim part avec lui.
+  if (-not $removeMpvShim) { & node (Join-Path $AppDir 'dist\server\cli\audio.js') remove --dir $MpvShimConfigDir }
 } else {
   Warn 'Node.js ou le build est absent : jetons non révoqués côté serveur (ils sont quand même effacés de ce PC).'
 }

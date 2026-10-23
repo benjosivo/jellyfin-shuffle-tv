@@ -188,6 +188,12 @@ export interface UpdateStatus {
   changes?: string[];
 }
 
+/** Réglage audio de MPV Shim : `available` = son dossier de configuration est sur ce PC. */
+export interface AudioStatus {
+  available: boolean;
+  compressor: boolean;
+}
+
 export interface AccessInfo {
   urls: string[];
   primary: string | null;
