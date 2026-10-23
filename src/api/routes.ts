@@ -1,6 +1,7 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import QRCode from "qrcode";
-import { findMpvShimConfigDir, readCompressor, restartMpvShim, writeCompressor } from "../audio.js";
+import { findMpvShimConfigDir, readAudioDevice, readCompressor, restartMpvShim, writeAudioDevice, writeCompressor } from "../audio.js";
+import { listAudioDevices } from "../audioDevices.js";
 import { server as serverConfig } from "../config.js";
 import { HttpError } from "../errors.js";
 import { JellyfinError, type JellyfinClient } from "../jellyfin/client.js";
@@ -119,12 +120,36 @@ export function createApi({ loop, library, client, config, setup, sleepGuard }: 
     res.status(204).end();
   });
 
-  // --- Compresseur audio (mpv.conf de MPV Shim, s'il est sur ce PC) -------------
+  // --- Réglages audio (mpv.conf de MPV Shim, s'il est sur ce PC) ----------------
 
   api.get("/audio", async (_req, res) => {
     const dir = await findMpvShimConfigDir();
-    const status: AudioStatus = { available: dir !== undefined, compressor: dir !== undefined && (await readCompressor(dir)) };
+    const status: AudioStatus = {
+      available: dir !== undefined,
+      compressor: dir !== undefined && (await readCompressor(dir)),
+      device: dir === undefined ? null : await readAudioDevice(dir),
+    };
     res.json(status);
+  });
+  api.get("/audio/devices", async (_req, res) => {
+    try {
+      res.json(await listAudioDevices());
+    } catch (err) {
+      log.error(`Liste des sorties audio impossible : ${(err as Error).message}`);
+      throw new HttpError(500, "Impossible de lister les sorties audio de ce PC.");
+    }
+  });
+  api.put("/audio/device", async (req, res) => {
+    const device = req.body?.device;
+    if (device !== null && typeof device !== "string") throw new HttpError(400, "device (texte, ou null pour la sortie par défaut) requis.");
+    const dir = await findMpvShimConfigDir();
+    if (!dir) throw new HttpError(409, "MPV Shim n'est pas configuré sur ce PC : réglage impossible d'ici.");
+    // Seule une sortie énumérée par le système est écrite dans mpv.conf (jamais un texte libre).
+    if (device !== null && !(await listAudioDevices()).some((d) => d.id === device)) {
+      throw new HttpError(400, "Cette sortie audio n'existe pas (ou plus) sur ce PC.");
+    }
+    await writeAudioDevice(dir, device);
+    res.status(204).end();
   });
   api.put("/audio/compressor", async (req, res) => {
     const enabled = req.body?.enabled;

@@ -203,6 +203,14 @@ export interface UpdateStatus {
 export interface AudioStatus {
   available: boolean;
   compressor: boolean;
+  /** Sortie audio choisie dans l'interface (valeur de `audio-device` de mpv) ; null = celle par défaut du système. */
+  device: string | null;
+}
+
+/** Sortie audio du PC : `id` est la valeur de `audio-device` de mpv. */
+export interface AudioDevice {
+  id: string;
+  name: string;
 }
 
 /** Blocage de la veille : `available` = ce système sait le faire (Windows, ou Linux avec systemd-inhibit). */

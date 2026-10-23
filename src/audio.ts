@@ -22,8 +22,20 @@ export const COMPRESSOR_FILTER =
 
 const BEGIN = "# >>> jellyfin-en-boucle : compresseur audio (géré par l'application)";
 const END = "# <<< jellyfin-en-boucle";
-const BLOCK = /^# >>> jellyfin-en-boucle[^\r\n]*\r?\n[\s\S]*?^# <<< jellyfin-en-boucle[^\r\n]*(?:\r?\n|$)/m;
+const BLOCK = /^# >>> jellyfin-en-boucle : compresseur[^\r\n]*\r?\n[\s\S]*?^# <<< jellyfin-en-boucle[^\r\n]*(?:\r?\n|$)/m;
 const FILTER_LINE = /^\s*af(?:-\w+)?\s*=/m;
+
+// Sortie audio : un second bloc, indépendant du compresseur, qui porte `audio-device=`.
+const DEVICE_BEGIN = "# >>> jellyfin-en-boucle : sortie audio (géré par l'application)";
+const DEVICE_BLOCK = /^# >>> jellyfin-en-boucle : sortie[^\r\n]*\r?\n[\s\S]*?^# <<< jellyfin-en-boucle[^\r\n]*(?:\r?\n|$)/m;
+const DEVICE_LINE = /^audio-device=(.+?)\s*$/m;
+
+/** Ajoute `lines` à la fin de `conf`, entre les marqueurs, avec les fins de ligne du fichier. */
+function appendBlock(conf: string, begin: string, lines: string[]): string {
+  const eol = conf.includes("\r\n") ? "\r\n" : "\n";
+  const separator = conf === "" || conf.endsWith("\n") ? "" : eol;
+  return `${conf}${separator}${[begin, ...lines, END].join(eol)}${eol}`;
+}
 
 export type CompressorState = "on" | "off" | "absent";
 
@@ -43,11 +55,20 @@ export function removeCompressor(conf: string): string {
 }
 
 export function applyCompressor(conf: string, enabled: boolean): string {
-  const eol = conf.includes("\r\n") ? "\r\n" : "\n";
-  const rest = removeCompressor(conf);
-  const separator = rest === "" || rest.endsWith("\n") ? "" : eol;
   const line = `${enabled ? "" : "# "}af-append=${COMPRESSOR_FILTER}`;
-  return `${rest}${separator}${[BEGIN, line, END].join(eol)}${eol}`;
+  return appendBlock(removeCompressor(conf), BEGIN, [line]);
+}
+
+/** Sortie audio choisie dans l'interface, `null` si le bloc est absent (mpv prend alors la sortie par défaut). */
+export function audioDeviceOf(conf: string): string | null {
+  const block = DEVICE_BLOCK.exec(conf)?.[0];
+  return (block !== undefined && DEVICE_LINE.exec(block)?.[1]) || null;
+}
+
+/** `null` retire le bloc : la ligne `audio-device=` d'un utilisateur, hors bloc, redevient celle qui compte. */
+export function applyAudioDevice(conf: string, device: string | null): string {
+  const rest = conf.replace(DEVICE_BLOCK, "");
+  return device === null ? rest : appendBlock(rest, DEVICE_BEGIN, [`audio-device=${device}`]);
 }
 
 // --- Fichier mpv.conf ----------------------------------------------------------------------
@@ -89,6 +110,14 @@ export async function writeCompressor(dir: string, enabled: boolean): Promise<vo
   await writeFileAtomic(path.join(dir, "mpv.conf"), applyCompressor(await readConf(dir), enabled));
 }
 
+export async function readAudioDevice(dir: string): Promise<string | null> {
+  return audioDeviceOf(await readConf(dir));
+}
+
+export async function writeAudioDevice(dir: string, device: string | null): Promise<void> {
+  await writeFileAtomic(path.join(dir, "mpv.conf"), applyAudioDevice(await readConf(dir), device));
+}
+
 /**
  * Activation à l'installation : seulement si rien n'a été décidé (ni bloc, ni filtre audio personnel).
  * Un compresseur désactivé depuis l'interface reste désactivé.
@@ -101,10 +130,12 @@ export async function enableCompressorByDefault(dir: string): Promise<"enabled" 
   return "enabled";
 }
 
+/** Retire les blocs gérés (compresseur et sortie audio). Renvoie false s'il n'y en avait aucun. */
 export async function removeCompressorBlock(dir: string): Promise<boolean> {
   const conf = await readConf(dir);
-  if (compressorState(conf) === "absent") return false;
-  await writeFileAtomic(path.join(dir, "mpv.conf"), removeCompressor(conf));
+  const rest = applyAudioDevice(removeCompressor(conf), null);
+  if (rest === conf) return false;
+  await writeFileAtomic(path.join(dir, "mpv.conf"), rest);
   return true;
 }
 

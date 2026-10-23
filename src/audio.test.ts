@@ -3,16 +3,20 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  applyAudioDevice,
   applyCompressor,
+  audioDeviceOf,
   COMPRESSOR_FILTER,
   compressorState,
   enableCompressorByDefault,
   findMpvShimConfigDir,
   hasOwnAudioFilter,
   mpvShimConfigCandidates,
+  readAudioDevice,
   readCompressor,
   removeCompressor,
   removeCompressorBlock,
+  writeAudioDevice,
   writeCompressor,
 } from "./audio.js";
 
@@ -59,6 +63,53 @@ describe("bloc du compresseur dans mpv.conf", () => {
   });
 });
 
+describe("bloc de la sortie audio dans mpv.conf", () => {
+  const DEVICE = "wasapi/{0.0.0.00000000}.{08d741ae-9367-455d-a8f2-f1e27d5b4df6}";
+
+  it("écrit la sortie dans son bloc, sans toucher au reste, et la relit", () => {
+    const conf = applyAudioDevice(OWN, DEVICE);
+    expect(conf.startsWith(OWN)).toBe(true);
+    expect(conf).toContain(`audio-device=${DEVICE}`);
+    expect(audioDeviceOf(conf)).toBe(DEVICE);
+    expect(audioDeviceOf(OWN)).toBeNull();
+  });
+
+  it("change de sortie sans dupliquer le bloc, et le retire avec null", () => {
+    const other = "pulse/alsa_output.pci-0000_00_1f.3.analog-stereo";
+    const changed = applyAudioDevice(applyAudioDevice(OWN, DEVICE), other);
+    expect(audioDeviceOf(changed)).toBe(other);
+    expect(changed.match(/>>> jellyfin-en-boucle/g)).toHaveLength(1);
+    expect(applyAudioDevice(changed, null)).toBe(OWN);
+  });
+
+  it("vit à côté du compresseur : chacun change sans toucher à l'autre", () => {
+    const both = applyAudioDevice(applyCompressor(OWN, true), DEVICE);
+    expect(compressorState(both)).toBe("on");
+    expect(audioDeviceOf(both)).toBe(DEVICE);
+
+    const compressorOff = applyCompressor(both, false);
+    expect(compressorState(compressorOff)).toBe("off");
+    expect(audioDeviceOf(compressorOff)).toBe(DEVICE);
+
+    const deviceGone = applyAudioDevice(both, null);
+    expect(compressorState(deviceGone)).toBe("on");
+    expect(audioDeviceOf(deviceGone)).toBeNull();
+    expect(removeCompressor(both)).toContain(`audio-device=${DEVICE}`);
+    expect(hasOwnAudioFilter(both)).toBe(false);
+  });
+
+  it("garde les fins de ligne Windows", () => {
+    const crlf = applyAudioDevice("hwdec=auto\r\n", DEVICE);
+    expect(crlf).not.toMatch(/[^\r]\n/);
+    expect(audioDeviceOf(crlf)).toBe(DEVICE);
+    expect(applyAudioDevice(crlf, null)).toBe("hwdec=auto\r\n");
+  });
+
+  it("ignore une ligne audio-device écrite à la main hors du bloc", () => {
+    expect(audioDeviceOf("audio-device=auto\n")).toBeNull();
+  });
+});
+
 describe("dossiers et fichier", () => {
   const tmp = () => fs.mkdtemp(path.join(os.tmpdir(), "audio-"));
 
@@ -102,10 +153,12 @@ describe("dossiers et fichier", () => {
     expect(await fs.readFile(path.join(custom, "mpv.conf"), "utf8")).toBe("af=lavfi=[dynaudnorm]\n");
   });
 
-  it("retire le bloc à la désinstallation et laisse le reste", async () => {
+  it("retire les blocs à la désinstallation et laisse le reste", async () => {
     const dir = await tmp();
     await fs.writeFile(path.join(dir, "mpv.conf"), OWN);
     await writeCompressor(dir, true);
+    await writeAudioDevice(dir, "pulse/sink");
+    expect(await readAudioDevice(dir)).toBe("pulse/sink");
     expect(await removeCompressorBlock(dir)).toBe(true);
     expect(await fs.readFile(path.join(dir, "mpv.conf"), "utf8")).toBe(OWN);
     expect(await removeCompressorBlock(dir)).toBe(false);

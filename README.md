@@ -90,8 +90,18 @@ Les pics de volume soudains (explosions, musique) sont atténués par un filtre 
 
 - **À l'installation** il est activé, sauf si `mpv.conf` contient déjà un filtre audio (`af=…`) ou si le compresseur a déjà été réglé (désactivé à la main, il le reste).
 - **Dans l'interface** : Réglages (icône en haut à droite) → Sur ce PC → Compresseur audio. MPV Shim ne lit `mpv.conf` qu'à son démarrage, donc un bouton « Relancer MPV Shim » apparaît ensuite ; la relance coupe la lecture en cours. Le réglage n'est proposé que si l'application tourne sur le même PC que MPV Shim.
-- Seul le bloc entre `# >>> jellyfin-en-boucle` et `# <<< jellyfin-en-boucle` est géré ; le reste du fichier n'est jamais modifié. Une retouche à la main de la ligne `af-append=` du bloc est écrasée au prochain basculement dans l'interface. Désactivé, le bloc reste en commentaire.
+- Seul le bloc entre `# >>> jellyfin-en-boucle : compresseur` et `# <<< jellyfin-en-boucle` est géré ; le reste du fichier n'est jamais modifié. Une retouche à la main de la ligne `af-append=` du bloc est écrasée au prochain basculement dans l'interface. Désactivé, le bloc reste en commentaire.
 - Le filtre a été validé avec ffmpeg, pas avec un vrai MPV Shim. Si MPV Shim est en sortie audio directe (passthrough), mpv ne filtre rien.
+
+### Sortie audio
+
+Réglages → Sur ce PC → Sortie audio : choisit la carte son, les enceintes ou le casque sur lesquels MPV Shim joue, au lieu de la sortie par défaut de Windows ou de Linux. Même condition que le compresseur : l'application doit tourner sur le même PC que MPV Shim, et la relance de MPV Shim est nécessaire ensuite.
+
+- **Windows** : les sorties actives sont lues dans le registre et écrites sous la forme `audio-device=wasapi/{0.0.0.00000000}.{GUID}`.
+- **Linux** : les sorties viennent de `pactl` (PulseAudio ou PipeWire-Pulse) et sont écrites `audio-device=pulse/<sink>`. Sans `pactl`, la liste est vide.
+- « Par défaut du système » retire le bloc `# >>> jellyfin-en-boucle : sortie audio` de `mpv.conf`. Une ligne `audio-device=` écrite à la main hors du bloc est alors de nouveau prise en compte ; tant que le bloc existe, il l'emporte (il est écrit en fin de fichier).
+- Une sortie choisie puis débranchée reste affichée « Sortie introuvable (débranchée ?) » ; rebranche-la ou repasse sur « Par défaut du système ».
+- Les identifiants wasapi et pulse n'ont pas été essayés avec un vrai MPV Shim (pas installé sur le PC de développement) : à vérifier au premier essai.
 
 ### Démarrer / relancer
 
@@ -330,7 +340,8 @@ src/
   player/library.ts     caches séries / épisodes / films / pistes / génériques
   store.ts              state.json (écriture atomique, migration)
   setup.ts              assistant de configuration
-  audio.ts              compresseur audio (bloc de mpv.conf) et relance de MPV Shim
+  audio.ts              compresseur audio et sortie audio (blocs de mpv.conf), relance de MPV Shim
+  audioDevices.ts       liste des sorties audio du PC (registre Windows, pactl sous Linux)
   sleep.ts              blocage de la mise en veille pendant la lecture (Windows, Linux)
   revoke.ts, cli/       révocation des jetons Jellyfin (désinstallation, déconnexion)
   tray/                 icône d'état : résumé (GET /api/tray), dessin, version Linux (D-Bus)

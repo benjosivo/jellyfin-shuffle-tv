@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppVersion, AudioStatus, LogLine, PublicState, SeriesSummary, Settings, SleepStatus, UpdateStatus } from "../../../src/shared/types";
+import type { AppVersion, AudioDevice, AudioStatus, LogLine, PublicState, SeriesSummary, Settings, SleepStatus, UpdateStatus } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
 import { ArrowLeftIcon } from "./icons";
@@ -14,6 +14,7 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
   const [update, setUpdate] = useState<UpdateStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const [audio, setAudio] = useState<AudioStatus | null>(null);
+  const [devices, setDevices] = useState<AudioDevice[] | null>(null);
   const [sleep, setSleep] = useState<SleepStatus | null>(null);
   const [restartPending, setRestartPending] = useState(false);
   const [restarting, setRestarting] = useState(false);
@@ -23,6 +24,12 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
     api.get<AudioStatus>("/audio").then(setAudio).catch(() => setAudio(null));
     api.get<SleepStatus>("/sleep").then(setSleep).catch(() => setSleep({ available: false }));
   }, []);
+
+  // Les sorties audio se lisent sur le PC (quelques centaines de ms sous Windows) : après l'état, hors du chemin critique.
+  const audioAvailable = audio?.available === true;
+  useEffect(() => {
+    if (audioAvailable) api.get<AudioDevice[]>("/audio/devices").then(setDevices).catch(() => setDevices([]));
+  }, [audioAvailable]);
 
   const loadSeries = () => {
     if (series === null && state.jellyfin === "ok") {
@@ -58,6 +65,15 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
       setRestartPending(true);
     }
     return saved;
+  };
+  const changeDevice = async (value: string) => {
+    const device = value === "" ? null : value;
+    if (device === (audio?.device ?? null)) return;
+    const saved = await run(() => api.put("/audio/device", { device }));
+    if (saved) {
+      setAudio((current) => (current ? { ...current, device } : current));
+      setRestartPending(true);
+    }
   };
   const restartPlayer = async () => {
     setRestarting(true);
@@ -148,6 +164,24 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
           disabled={sleep?.available === false}
           onChange={(preventSleep) => patch({ preventSleep })}
         />
+        {audio?.available && (
+          <div className="row row-stack">
+            <Listbox
+              label="Sortie audio"
+              value={audio.device ?? ""}
+              options={[
+                { value: "", label: "Par défaut du système" },
+                ...(devices ?? []).map((d) => ({ value: d.id, label: d.name })),
+                // Sortie choisie mais débranchée ou inconnue : elle reste visible plutôt que de se faire passer pour le défaut.
+                ...(audio.device && devices && !devices.some((d) => d.id === audio.device)
+                  ? [{ value: audio.device, label: "Sortie introuvable (débranchée ?)" }]
+                  : []),
+              ]}
+              onChange={changeDevice}
+            />
+            <p className="row-desc">Où MPV Shim joue le son. S'applique après la relance de MPV Shim.</p>
+          </div>
+        )}
         {audio?.available && (
           <ToggleRow
             title="Compresseur audio"
