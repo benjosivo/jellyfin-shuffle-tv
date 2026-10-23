@@ -177,6 +177,17 @@ export interface AppVersion {
   commit?: string;
 }
 
+/** Résultat de la recherche de mise à jour : "blocked" = disponible mais le script d'installation la refuserait. */
+export interface UpdateStatus {
+  state: "up-to-date" | "available" | "blocked" | "unavailable";
+  message: string;
+  current?: string;
+  latest?: string;
+  behind?: number;
+  /** Titres des derniers commits à récupérer. */
+  changes?: string[];
+}
+
 export interface AccessInfo {
   urls: string[];
   primary: string | null;

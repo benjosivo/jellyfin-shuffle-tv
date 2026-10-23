@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { AppVersion, LogLine, PublicState, SeriesSummary } from "../../../src/shared/types";
+import type { AppVersion, LogLine, PublicState, SeriesSummary, UpdateStatus } from "../../../src/shared/types";
 import { api } from "../api";
 import { useAction } from "../toast";
 
@@ -10,6 +10,8 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
   const [queueSize, setQueueSize] = useState(String(state.settings.queueSize));
   const [logs, setLogs] = useState<LogLine[] | null>(null);
   const [appVersion, setAppVersion] = useState<AppVersion | null>(null);
+  const [update, setUpdate] = useState<UpdateStatus | null>(null);
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     api.get<AppVersion>("/version").then(setAppVersion).catch(() => setAppVersion(null));
@@ -36,6 +38,17 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
       "Réglages enregistrés",
     );
   const dirty = changeBefore !== String(state.settings.changeBeforeEndSec) || queueSize !== String(state.settings.queueSize);
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    setUpdate(null);
+    await run(async () => setUpdate(await api.get<UpdateStatus>("/update")));
+    setChecking(false);
+  };
+  const installUpdate = async () => {
+    const started = await run(() => api.post("/update"), "Mise à jour lancée : l'application redémarre dans quelques minutes.");
+    if (started) setUpdate(null);
+  };
 
   const toggleLogs = () => {
     if (logs) return setLogs(null);
@@ -130,6 +143,28 @@ export function SettingsPanel({ state, onOpenSetup }: { state: PublicState; onOp
           Version {appVersion.version}
           {appVersion.commit ? ` (${appVersion.commit})` : ""}
         </p>
+      )}
+      <div className="update">
+        <button className="small" onClick={checkUpdate} disabled={checking}>
+          {checking ? "Recherche…" : "Chercher une mise à jour"}
+        </button>
+        {update?.state === "available" && (
+          <button className="small primary" onClick={installUpdate}>
+            Installer
+          </button>
+        )}
+      </div>
+      {update && (
+        <div className="hint">
+          <p>{update.message}</p>
+          {update.changes && update.changes.length > 0 && (
+            <ul className="update-changes">
+              {update.changes.map((change, i) => (
+                <li key={i}>{change}</li>
+              ))}
+            </ul>
+          )}
+        </div>
       )}
     </section>
   );

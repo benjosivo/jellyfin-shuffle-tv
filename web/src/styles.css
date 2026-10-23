@@ -694,6 +694,17 @@ button.link.danger {
   overflow-wrap: anywhere;
 }
 
+.update {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.update-changes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+
 .logs {
   margin-top: 8px;
   max-height: 260px;

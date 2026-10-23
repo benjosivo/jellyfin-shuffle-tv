@@ -12,6 +12,7 @@ import { playerMatch, type Setup } from "../setup.js";
 import type { ConfigManager } from "../config.js";
 import { MOVIES_SOURCE_ID, type AccessInfo, type AppVersion, type SeriesSummary, type Settings } from "../shared/types.js";
 import { traySummary } from "../tray/status.js";
+import { checkForUpdate, installUpdate } from "../update.js";
 import { APP_INFO } from "../version.js";
 import { createEventsHandler } from "./events.js";
 
@@ -228,6 +229,13 @@ export function createApi({ loop, library, client, config, setup }: ApiDeps): ex
   api.get("/version", (_req, res) => {
     const info: AppVersion = APP_INFO;
     res.json(info);
+  });
+  api.get("/update", async (_req, res) => {
+    res.json(await checkForUpdate());
+  });
+  api.post("/update", async (_req, res) => {
+    await installUpdate();
+    res.status(202).end();
   });
 
   // --- Accès depuis le téléphone (QR code) -------------------------------------

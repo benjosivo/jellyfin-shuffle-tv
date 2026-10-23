@@ -8,7 +8,7 @@ import type { AppVersion } from "./shared/types.js";
 // dossier de l'application, qui sert de référence aux mises à jour automatiques (deploy/*/update.*).
 
 /** Remonte depuis ce module (src/ en dev, dist/server/ une fois compilé) jusqu'au package.json de l'application. */
-function findAppDir(start = path.dirname(fileURLToPath(import.meta.url))): string | null {
+export function findAppDir(start = path.dirname(fileURLToPath(import.meta.url))): string | null {
   for (let dir = start; ; dir = path.dirname(dir)) {
     const file = path.join(dir, "package.json");
     try {
