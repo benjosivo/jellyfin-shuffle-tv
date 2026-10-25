@@ -85,6 +85,27 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 
 Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-NoTray`, `-NoAutoUpdate`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
 
+### Container (Coolify, Docker)
+
+Depuis [« Changer d'écran »](#changer-décran), une seule instance pilote tous les écrans : elle peut tourner dans un container, sur un serveur, au lieu d'un PC. Les PC et télés n'ont alors plus que MPV Shim ou l'appli Jellyfin.
+
+Dans Coolify : nouvelle application depuis ce dépôt Git, build pack **Dockerfile**, puis :
+
+- **Port** : publier `8787:8787` (champ « Ports Mappings ») et **ne mettre aucun domaine**. L'interface est alors sur `http://<ip-du-serveur>:8787/`.
+- **Stockage** : volume persistant monté sur `/data` (config, jeton, `state.json`). Sans lui, tout est perdu à chaque déploiement.
+- **Variables** : `JELLYFIN_URL` (ex. `http://192.168.1.10:8096` : la découverte automatique ne traverse pas le réseau de Docker) et `PUBLIC_URL=http://<ip-du-serveur>:8787/` (sinon le QR code affiche l'adresse interne du container).
+- **Mise à jour** : Coolify redéploie ; la mise à jour git de l'application n'existe pas dans le container (Réglages → « indisponible »).
+
+L'application n'a **aucune authentification** : qui atteint l'URL pilote la lecture et voit la bibliothèque Jellyfin. Ne pas lui attacher de domaine public sans protection devant (basic auth Coolify, VPN).
+
+Passer d'un PC au container :
+
+1. copier `state.json` du PC (file, historique, reprise) dans le volume `/data` ;
+2. désinstaller l'application du PC en gardant MPV Shim : `deploy/linux/uninstall.sh --keep-third-party` ou `deploy\windows\uninstall.ps1 -KeepThirdParty`. Ne pas copier `token` : la désinstallation le révoque côté Jellyfin ;
+3. démarrer le container et refaire l'assistant (connexion Jellyfin, série), puis connecter MPV Shim du PC au même utilisateur Jellyfin.
+
+Ne pas laisser deux instances piloter le même écran : rien ne l'empêche. Le compresseur audio, la sortie audio et l'anti-veille concernent le PC de l'instance et disparaissent donc de l'interface ; un `mpv.conf` déjà réglé reste actif. L'image n'a pas été construite ni essayée sur un vrai Coolify au moment de l'écrire (Docker absent du PC de développement).
+
 ### Compresseur audio
 
 Les pics de volume soudains (explosions, musique) sont atténués par un filtre mpv (`acompressor` suivi d'un `alimiter`) écrit dans le `mpv.conf` de MPV Shim : `%APPDATA%\jellyfin-mpv-shim` sous Windows, `~/.config/jellyfin-mpv-shim` sous Linux (dossier Flatpak compris). Sur un signal « dialogue faible puis explosion », mesuré avec ffmpeg, l'écart passe d'environ 48 dB à 27 dB, sans écrêtage.

@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+legacy
+docs
+deploy
+*.log
+.env
+.env.*
+spike-report.json
