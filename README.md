@@ -252,12 +252,12 @@ Comportement :
   - **Windows** : `SetThreadExecutionState` (système et écran), tenu par un petit process PowerShell caché.
   - **Linux** : verrou `sleep:idle` de `systemd-inhibit`. Sans systemd, le réglage est grisé.
   - Le verrou est lié au process : si l'application s'arrête, même brutalement, il tombe avec elle.
-- **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard).
+- **Stop** arrête la lecture **et désactive le mode auto** (sinon la boucle relancerait un épisode quelques secondes plus tard). La carte « En cours » affiche ensuite l'épisode arrêté avec un bouton **Reprendre à …** (le bouton ▶ fait la même chose) : il relance l'épisode et réactive le mode auto.
 - **Passer** et **Lire maintenant** reprennent toujours la main, même si autre chose a été lancé à la main.
 - Un contenu lancé manuellement sur MPV Shim (depuis l'appli Jellyfin, par exemple) n'est pas interrompu : la boucle reprend quand sa lecture s'arrête.
 - Un épisode passé compte quand même comme vu.
 - Changer de série conserve l'historique et la file de chaque série.
-- **Reprise.** L'application garde la position de l'épisode (ou du film) qu'elle a lancé, une par série, dans `state.json`. Si la lecture s'interrompt (MPV Shim fermé, PC éteint, **Stop** puis mode auto réactivé) ou si tu changes de série puis reviens, l'épisode repart **30 s avant** l'endroit de l'arrêt, au lieu de passer au suivant. **Passer**, **Précédent** et **Lire maintenant** abandonnent l'épisode interrompu. Un épisode presque fini (moins de `Changer à` secondes) ou au générique n'est pas repris. Un contenu lancé à la main n'est pas suivi : Jellyfin gère sa propre reprise.
+- **Reprise.** L'application garde la position de l'épisode (ou du film) qu'elle a lancé, une par série, dans `state.json`. Si la lecture s'interrompt (MPV Shim fermé, PC éteint, **Stop** puis **Reprendre** ou mode auto réactivé) ou si tu changes de série puis reviens, l'épisode repart **30 s avant** l'endroit de l'arrêt, au lieu de passer au suivant. **Passer**, **Précédent** et **Lire maintenant** abandonnent l'épisode interrompu. Un épisode presque fini (moins de `Changer à` secondes) ou au générique n'est pas repris. Un contenu lancé à la main n'est pas suivi : Jellyfin gère sa propre reprise.
 
 ### Changer d'écran
 
@@ -396,6 +396,7 @@ deploy/linux, deploy/windows   install / uninstall, icône d'état Windows (tray
 ```
 GET    /api/state                 état complet (aussi poussé en SSE sur /api/events)
 POST   /api/player/pause | resume | skip | stop
+POST   /api/player/resume-interrupted  reprend l'épisode interrompu (30 s avant) et réactive le mode auto
 POST   /api/player/seek           { positionSec }
 POST   /api/player/seek-by        { deltaSec }   saut relatif (-600..600)
 POST   /api/player/previous       épisode précédent

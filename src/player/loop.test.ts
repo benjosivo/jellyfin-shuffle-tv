@@ -380,6 +380,38 @@ describe("PlayerLoop", () => {
       expect(fake.startTicks.at(-1)).toBe(870 * SEC);
     });
 
+    it("après Stop, l'état public annonce l'épisode à reprendre et sa position de départ", async () => {
+      await startFirst();
+      const id = fake.playing!.item.Id;
+      fake.playing!.position = 900 * SEC;
+      await loop.tick();
+      expect(loop.snapshot().resumePoint).toBeNull(); // en cours de lecture
+      await loop.stopPlayback();
+      await loop.tick();
+      expect(loop.snapshot().resumePoint).toMatchObject({ id, positionSec: 870 });
+    });
+
+    it("Reprendre après Stop : relance l'épisode 30 s avant et réactive le mode auto", async () => {
+      await startFirst();
+      const id = fake.playing!.item.Id;
+      fake.playing!.position = 900 * SEC;
+      await loop.tick();
+      await loop.stopPlayback();
+      await loop.tick();
+
+      expect(await loop.resumeInterrupted()).toBe(id);
+      expect(plays().at(-1)).toBe(`play:sess-mpv:${id}`);
+      expect(fake.startTicks.at(-1)).toBe(870 * SEC);
+      expect(store.settings.autoMode).toBe(true);
+      expect(loop.snapshot().historyCount).toBe(1);
+    });
+
+    it("Reprendre sans épisode interrompu : refusé, rien n'est lancé", async () => {
+      await loop.tick();
+      await expect(loop.resumeInterrupted()).rejects.toThrow(/Aucun épisode à reprendre/);
+      expect(plays()).toHaveLength(0);
+    });
+
     it("changer de série puis revenir : chaque série reprend son épisode", async () => {
       fake.movies = movies(4);
       await loop.addMovies(["mv1", "mv2"]);

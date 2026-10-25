@@ -18,6 +18,9 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
   const canSeek = Boolean(ready && np?.canSeek && runtime > 0);
   const credits = np?.creditsStartSec;
   const creditsPct = credits !== undefined && runtime > 0 ? Math.min(100, (credits / runtime) * 100) : null;
+  // Après un Stop (mode auto coupé) : l'épisode interrompu se reprend d'ici. En mode auto, la boucle le reprend seule.
+  const interrupted = !np && !state.settings.autoMode ? state.resumePoint : null;
+  const resumeInterrupted = () => run(() => api.post("/player/resume-interrupted"));
 
   // Les appuis rapides sur ±5 / ±15 s s'additionnent : un seul saut est envoyé après 400 ms.
   const [jump, setJump] = useState(0);
@@ -101,6 +104,21 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
             ))}
           </div>
         </>
+      ) : interrupted ? (
+        <>
+          <Thumb itemId={interrupted.id} seriesId={interrupted.seriesId} height={360} className="thumb-hero" />
+          <div className="np-meta">
+            <div className="np-series">{interrupted.seriesName ?? state.series?.name ?? ""}</div>
+            <div className="np-title">
+              {episodeCode(interrupted) && <span className="code">{episodeCode(interrupted)}</span>} {interrupted.name}
+            </div>
+            <span className="chip">arrêté</span>
+          </div>
+          <button className="primary resume-button" disabled={!ready} onClick={resumeInterrupted}>
+            <PlayIcon size={18} /> Reprendre à {duration(interrupted.positionSec)}
+          </button>
+          <p className="hint">Relance l'épisode là où il s'est arrêté (30 s avant) et réactive le mode auto.</p>
+        </>
       ) : (
         <p className="muted empty">
           {state.player === "ok"
@@ -117,18 +135,18 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
         </button>
         <button
           className="round round-main"
-          disabled={!ready || !np}
-          onClick={() => run(() => api.post(np?.isPaused ? "/player/resume" : "/player/pause"))}
-          aria-label={np?.isPaused ? "Reprendre" : "Pause"}
+          disabled={!ready || (!np && !interrupted)}
+          onClick={() => (np ? run(() => api.post(np.isPaused ? "/player/resume" : "/player/pause")) : resumeInterrupted())}
+          aria-label={!np || np.isPaused ? "Reprendre" : "Pause"}
         >
-          {np?.isPaused ? <PlayIcon size={34} /> : <PauseIcon size={34} />}
+          {!np || np.isPaused ? <PlayIcon size={34} /> : <PauseIcon size={34} />}
         </button>
         <button className="round" disabled={!ready || !state.series} onClick={() => run(() => api.post("/player/skip"))} aria-label="Épisode suivant" title="Épisode suivant">
           <NextIcon />
         </button>
       </div>
       <div className="secondary-controls">
-        <button className="small" disabled={!ready || !np} onClick={() => run(() => api.post("/player/stop"))} title="Arrête la lecture et désactive le mode auto">
+        <button className="small" disabled={!ready || !np} onClick={() => run(() => api.post("/player/stop"))} title="Arrête la lecture et désactive le mode auto (reprise possible ensuite)">
           <StopIcon size={14} /> Stop
         </button>
       </div>

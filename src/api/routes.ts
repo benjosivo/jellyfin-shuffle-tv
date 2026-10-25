@@ -86,6 +86,9 @@ export function createApi({ loop, library, client, config, setup, sleepGuard }: 
   api.post("/player/skip", async (_req, res) => {
     res.json({ episodeId: await loop.skip() });
   });
+  api.post("/player/resume-interrupted", async (_req, res) => {
+    res.json({ episodeId: await loop.resumeInterrupted() });
+  });
   api.post("/player/stop", async (_req, res) => {
     await loop.stopPlayback();
     res.status(204).end();

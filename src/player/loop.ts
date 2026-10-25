@@ -513,6 +513,23 @@ export class PlayerLoop extends EventEmitter {
     return this.action(async (s) => this.advance(s, await this.currentEpisodes(), { stopFirst: false }));
   }
 
+  /** Reprend l'épisode interrompu (après Stop) et réactive le mode auto. Renvoie l'ID lancé. */
+  resumeInterrupted(): Promise<string> {
+    return this.action(async (s) => {
+      const episodes = await this.currentEpisodes();
+      if (!this.resumePoint(this.store.seriesState(episodes.seriesId), episodes)) {
+        throw new HttpError(409, "Aucun épisode à reprendre.");
+      }
+      if (!this.store.settings.autoMode) {
+        this.store.settings.autoMode = true;
+        this.idleSince = undefined;
+        this.store.save();
+        this.log.info("Reprise demandée : mode auto réactivé.");
+      }
+      return this.advance(s, episodes, { stopFirst: Boolean(s.NowPlayingItem), resume: true });
+    });
+  }
+
   /** Arrête la lecture et désactive le mode auto (sinon la boucle relancerait un épisode). */
   stopPlayback(): Promise<void> {
     return this.action(async (s) => {
@@ -879,6 +896,8 @@ export class PlayerLoop extends EventEmitter {
     const tracks = item ? this.library.cachedTracks(item.Id) : undefined;
     const creditsAt = item ? this.creditsTicks(item) : undefined;
     const lim = queue.limits(episodes?.episodes.length ?? 0, settings);
+    const resume = seriesState?.resume;
+    const resumeInfo = resume && resume.id !== item?.Id ? episodes?.byId.get(resume.id) : undefined;
 
     return {
       configured: this.configured,
@@ -912,6 +931,10 @@ export class PlayerLoop extends EventEmitter {
             managed: item.Id === this.store.state.lastStarted?.id,
           }
         : null,
+      resumePoint:
+        resume && resumeInfo
+          ? { ...resumeInfo, positionSec: Math.max(0, resume.positionTicks / TICKS_PER_SECOND - RESUME_REWIND_SEC) }
+          : null,
       volume: playState.VolumeLevel ?? null,
       muted: playState.IsMuted ?? false,
       audioIndex: playState.AudioStreamIndex ?? null,

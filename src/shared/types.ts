@@ -105,6 +105,8 @@ export interface PublicState {
   /** Nombre de films dans la liste « déjà vus » (même hors source courante). */
   movieCount: number;
   nowPlaying: NowPlaying | null;
+  /** Épisode interrompu de la série courante (hors lecture en cours) et position de reprise réelle (recul compris). */
+  resumePoint: (EpisodeInfo & { positionSec: number }) | null;
   volume: number | null;
   muted: boolean;
   audioIndex: number | null;
