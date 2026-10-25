@@ -10,6 +10,7 @@ import { log, setLogFile } from "./log.js";
 import { accessUrls } from "./net.js";
 import { Library } from "./player/library.js";
 import { PlayerLoop } from "./player/loop.js";
+import { playerScript } from "./playerScript.js";
 import { isConfigured, playerMatch, Setup } from "./setup.js";
 import type { PublicState } from "./shared/types.js";
 import { detectAcquire, SleepGuard } from "./sleep.js";
@@ -47,6 +48,18 @@ async function main(): Promise<void> {
   const app = express();
   app.disable("x-powered-by");
   app.use("/api", createApi({ loop, library, client, config, setup, sleepGuard }));
+
+  // Installation d'un nouvel écran de lecture : `irm <url>/lecteur.ps1 | iex` ou `curl -fsSL <url>/lecteur.sh | bash`.
+  for (const kind of ["ps1", "sh"] as const) {
+    app.get(`/lecteur.${kind}`, (_req, res) => {
+      try {
+        res.set("Content-Type", "text/plain; charset=utf-8").send(playerScript(kind));
+      } catch (err) {
+        log.error(`Script lecteur.${kind} indisponible : ${(err as Error).message}`);
+        res.status(404).type("text/plain").send("Script introuvable.\n");
+      }
+    });
+  }
 
   // Front (build Vite) servi en statique, avec repli sur index.html.
   const here = path.dirname(fileURLToPath(import.meta.url));

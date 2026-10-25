@@ -15,6 +15,9 @@ ENV NODE_ENV=production \
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+# Scripts d'installation d'un nouvel écran, servis sur /lecteur.ps1 et /lecteur.sh.
+COPY deploy/windows/mpv-shim.ps1 deploy/windows/lecteur.ps1 ./deploy/windows/
+COPY deploy/linux/mpv-shim.sh deploy/linux/lecteur.sh ./deploy/linux/
 RUN mkdir /data && chown node:node /data
 USER node
 VOLUME /data

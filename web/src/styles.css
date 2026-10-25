@@ -1125,6 +1125,13 @@ code {
   overflow-wrap: anywhere;
 }
 
+/* Commande à copier : un clic la sélectionne en entier. */
+code.command {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  user-select: all;
+}
+
 .candidates li {
   display: flex;
   align-items: center;

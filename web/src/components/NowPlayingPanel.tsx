@@ -142,7 +142,7 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
         onChange={transfer}
       />
       {players !== null && players.length < 2 && (
-        <p className="hint">Aucun autre écran : ouvrir MPV Shim ou l'appli Jellyfin sur l'autre écran, connecté avec le même compte.</p>
+        <p className="hint">Aucun autre écran : ouvrir MPV Shim ou l'appli Jellyfin sur l'autre écran, connecté avec le même compte. Nouveau PC : Réglages → Ajouter un écran.</p>
       )}
     </section>
   );

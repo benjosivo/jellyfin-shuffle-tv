@@ -199,6 +199,19 @@ export function SettingsPage({ state, onOpenSetup, onBack }: { state: PublicStat
         )}
       </Group>
 
+      <Group title="Ajouter un écran">
+        <div className="row row-stack">
+          <p className="row-desc">
+            Sur le nouveau PC, coller la commande dans un terminal : elle installe MPV Shim et le lance. Il reste à s'y connecter avec le même compte Jellyfin.
+          </p>
+          <p className="row-note">Windows (PowerShell)</p>
+          <code className="command">irm {window.location.origin}/lecteur.ps1 | iex</code>
+          <p className="row-note">Linux</p>
+          <code className="command">curl -fsSL {window.location.origin}/lecteur.sh | bash</code>
+          <p className="row-desc">Télé : installer l'appli Jellyfin et s'y connecter avec le même compte.</p>
+        </div>
+      </Group>
+
       <Group title="Serveur">
         <Row title="Serveur et compte" description={`Lecteur : ${player}`}>
           <button className="small" onClick={onOpenSetup} aria-label="Modifier le serveur et le compte">

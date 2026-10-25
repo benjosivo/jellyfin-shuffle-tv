@@ -91,52 +91,6 @@ ok "Node.js $(node --version) ($NODE_BIN)"
 # --- 2. Jellyfin MPV Shim -------------------------------------------------------------
 
 step "Jellyfin MPV Shim"
-MPV_SHIM_CMD=""
-detect_mpv_shim() {
-  MPV_SHIM_CMD=""
-  if have jellyfin-mpv-shim; then
-    MPV_SHIM_CMD="$(command -v jellyfin-mpv-shim)"
-  elif have flatpak && flatpak info "$FLATPAK_ID" >/dev/null 2>&1; then
-    MPV_SHIM_CMD="flatpak run $FLATPAK_ID"
-  elif [[ -x "$HOME/.local/bin/jellyfin-mpv-shim" ]]; then
-    MPV_SHIM_CMD="$HOME/.local/bin/jellyfin-mpv-shim"
-  fi
-  [[ -n "$MPV_SHIM_CMD" ]]
-}
-
-install_mpv_shim() {
-  local helper
-  helper="$(aur_helper)"
-  if [[ "$PM" == pacman && -n "$helper" ]]; then
-    echo "Installation depuis l'AUR avec $helper…"
-    if "$helper" -S --needed --noconfirm jellyfin-mpv-shim; then
-      manifest_add "mpv-shim aur"
-      return 0
-    fi
-  fi
-  if have flatpak; then
-    echo "Installation depuis Flathub…"
-    if ! flatpak remotes --user 2>/dev/null | grep -q "^flathub"; then
-      flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo &&
-        manifest_add "flathub-remote user"
-    fi
-    if flatpak install --user -y --noninteractive flathub "$FLATPAK_ID"; then
-      manifest_add "mpv-shim flatpak"
-      return 0
-    fi
-  fi
-  echo "Installation avec pipx…"
-  case "$PM" in
-    pacman) pkg_install mpv python-pipx tk ;;
-    apt) pkg_install mpv libmpv-dev pipx python3-tk ;;
-    dnf) pkg_install mpv mpv-libs pipx python3-tkinter ;;
-    zypper) pkg_install mpv python3-pipx python3-tk ;;
-  esac || return 1
-  have pipx || return 1
-  pipx install 'jellyfin-mpv-shim[all]' || return 1
-  manifest_add "mpv-shim pipx"
-}
-
 if detect_mpv_shim; then
   ok "Déjà installé : $MPV_SHIM_CMD"
 elif [[ $INSTALL_MPV_SHIM -eq 1 ]] && ask "Jellyfin MPV Shim n'est pas installé. L'installer ?"; then
