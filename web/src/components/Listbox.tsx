@@ -142,7 +142,7 @@ export function Listbox({
           onClick={() => (open ? close(false) : openList())}
           onKeyDown={onTriggerKey}
         >
-          <span id={`${id}-value`} className={current ? "listbox-value" : "listbox-value muted"}>
+          <span id={`${id}-value`} className={current ? "listbox-value" : "listbox-value muted"} title={current?.label}>
             {current?.label ?? placeholder}
           </span>
           <ChevronDownIcon />

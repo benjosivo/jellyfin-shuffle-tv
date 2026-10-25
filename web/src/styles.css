@@ -599,6 +599,8 @@ button.link.danger {
 
 .field {
   display: grid;
+  /* sans minmax(0, …) la colonne `auto` s'élargit au texte nowrap du déclencheur et déborde de la carte */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-1);
   margin-top: 0.75rem;
   min-width: 0;
