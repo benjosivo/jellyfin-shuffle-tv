@@ -106,22 +106,9 @@ docker run -d --name jellyfin-en-boucle --restart unless-stopped \
 
 Puis ouvrir `http://<ip-de-la-machine>:8787/` : l'assistant guide la connexion à Jellyfin et le choix de la série. Mise à jour : `git pull`, puis `docker build` et `docker rm -f` + `docker run` avec les mêmes options (le volume garde la configuration). Journal : `docker logs -f jellyfin-en-boucle`.
 
-**Avec Coolify** : nouvelle application depuis ce dépôt Git, build pack **Dockerfile**, puis :
+**Avec Coolify** : voir le [guide Coolify](docs/coolify.md) (réglages, variables, volume, migration depuis un PC, dépannage).
 
-- **Port** : publier `8787:8787` (champ « Ports Mappings ») et **ne mettre aucun domaine**. L'interface est alors sur `http://<ip-du-serveur>:8787/`.
-- **Stockage** : volume persistant monté sur `/data` (config, jeton, `state.json`). Sans lui, tout est perdu à chaque déploiement.
-- **Variables** : `JELLYFIN_URL` (ex. `http://192.168.1.10:8096` : la découverte automatique ne traverse pas le réseau de Docker) et `PUBLIC_URL=http://<ip-du-serveur>:8787/` (sinon le QR code affiche l'adresse interne du container).
-- **Mise à jour** : Coolify redéploie ; la mise à jour git de l'application n'existe pas dans le container (Réglages → « indisponible »).
-
-L'application n'a **aucune authentification** : qui atteint l'URL pilote la lecture et voit la bibliothèque Jellyfin. Ne pas lui attacher de domaine public sans protection devant (basic auth Coolify, VPN).
-
-Passer d'un PC au container :
-
-1. copier `state.json` du PC (file, historique, reprise) dans le volume `/data` ;
-2. désinstaller l'application du PC en gardant MPV Shim : `deploy/linux/uninstall.sh --keep-third-party` ou `deploy\windows\uninstall.ps1 -KeepThirdParty`. Ne pas copier `token` : la désinstallation le révoque côté Jellyfin ;
-3. démarrer le container et refaire l'assistant (connexion Jellyfin, série), puis connecter MPV Shim du PC au même utilisateur Jellyfin.
-
-Ne pas laisser deux instances piloter le même écran : rien ne l'empêche. Le compresseur audio, la sortie audio et l'anti-veille concernent le PC de l'instance et disparaissent donc de l'interface ; un `mpv.conf` déjà réglé reste actif. L'image n'a pas été construite ni essayée sur un vrai Coolify au moment de l'écrire (Docker absent du PC de développement).
+L'application n'a **aucune authentification** : qui atteint l'URL pilote la lecture et voit la bibliothèque Jellyfin. Ne pas lui attacher de domaine public sans protection devant. Le compresseur audio, la sortie audio et l'anti-veille ne sont pas proposés dans un container. L'image n'a pas été essayée au moment de l'écrire (Docker absent du PC de développement).
 
 ### Compresseur audio
 
@@ -277,7 +264,7 @@ Comportement :
 **Lire sur…** (sous la carte « En cours ») déplace la lecture vers un autre écran : un autre PC avec MPV Shim, ou une télé avec l'appli Jellyfin. L'épisode s'arrête sur l'écran actuel et reprend sur le nouveau **5 s avant** l'endroit de l'arrêt ; l'application pilote ensuite le nouvel écran (file, historique, coupe avant la fin, générique).
 
 - Une seule instance de l'application suffit : elle pilote les autres écrans à distance via Jellyfin. Rien à installer sur la télé.
-- Le nouvel écran doit être **ouvert et connecté au même utilisateur Jellyfin** ; la liste est relue à chaque ouverture.
+- Le nouvel écran doit être **ouvert et connecté au même utilisateur Jellyfin** ; la liste est relue à chaque ouverture. Pour un nouveau PC, Réglages → **Ajouter un écran** donne une commande qui installe MPV Shim ([détails](docs/coolify.md#ajouter-un-écran-de-lecture)).
 - Sans lecture en cours, seul l'écran piloté change : la suite démarre dessus.
 - L'écran choisi est conservé (`playerDeviceId` de `config.json`) tant qu'on ne revient pas à la détection automatique (Réglages → Serveur et compte → MPV Shim). Fixé par `PLAYER_DEVICE_ID`, il ne peut pas être changé depuis l'interface.
 - Si le lancement échoue sur le nouvel écran, l'écran piloté reste l'ancien. L'ancien a déjà reçu `Stop` : la boucle y reprend l'épisode à son point de reprise.
