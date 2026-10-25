@@ -89,7 +89,24 @@ Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `
 
 Depuis [« Changer d'écran »](#changer-décran), une seule instance pilote tous les écrans : elle peut tourner dans un container, sur un serveur, au lieu d'un PC. Les PC et télés n'ont alors plus que MPV Shim ou l'appli Jellyfin.
 
-Dans Coolify : nouvelle application depuis ce dépôt Git, build pack **Dockerfile**, puis :
+Prérequis : Docker (ou un serveur Coolify). Le [Dockerfile](Dockerfile) compile le serveur et l'interface, rien d'autre à installer.
+
+**Avec Docker seul**, sur n'importe quelle machine du réseau :
+
+```bash
+git clone https://github.com/benjosivo/jellyfin-shuffle-tv.git
+cd jellyfin-shuffle-tv
+docker build -t jellyfin-en-boucle .
+docker run -d --name jellyfin-en-boucle --restart unless-stopped \
+  -p 8787:8787 -v jellyfin-en-boucle-data:/data \
+  -e JELLYFIN_URL=http://192.168.1.10:8096 \
+  -e PUBLIC_URL=http://<ip-de-la-machine>:8787/ \
+  jellyfin-en-boucle
+```
+
+Puis ouvrir `http://<ip-de-la-machine>:8787/` : l'assistant guide la connexion à Jellyfin et le choix de la série. Mise à jour : `git pull`, puis `docker build` et `docker rm -f` + `docker run` avec les mêmes options (le volume garde la configuration). Journal : `docker logs -f jellyfin-en-boucle`.
+
+**Avec Coolify** : nouvelle application depuis ce dépôt Git, build pack **Dockerfile**, puis :
 
 - **Port** : publier `8787:8787` (champ « Ports Mappings ») et **ne mettre aucun domaine**. L'interface est alors sur `http://<ip-du-serveur>:8787/`.
 - **Stockage** : volume persistant monté sur `/data` (config, jeton, `state.json`). Sans lui, tout est perdu à chaque déploiement.
