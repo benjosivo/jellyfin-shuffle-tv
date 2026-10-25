@@ -35,8 +35,9 @@ async function main(): Promise<void> {
     match: () => playerMatch(config),
     isConfigured: () => isConfigured(config),
     defaultSeriesName: () => config.defaultSeriesName,
+    selectPlayer: (deviceId) => setup.selectPlayer(deviceId),
   });
-  const setup = new Setup(config, store, loop);
+  const setup: Setup = new Setup(config, store, loop);
 
   const sleepGuard = new SleepGuard(await detectAcquire());
   loop.on("state", (state: PublicState) => {

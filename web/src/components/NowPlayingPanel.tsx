@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import type { PublicState } from "../../../src/shared/types";
+import type { PlayerTarget, PublicState } from "../../../src/shared/types";
 import { api } from "../api";
 import { duration, episodeCode } from "../format";
 import { useAction } from "../toast";
 import { useLivePosition } from "../useServerState";
 import { NextIcon, PauseIcon, PlayIcon, PrevIcon, StopIcon } from "./icons";
+import { Listbox } from "./Listbox";
 import { Thumb } from "./Thumb";
 
 export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; receivedAt: number }) {
@@ -33,6 +34,22 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
       setJump(0);
       if (deltaSec !== 0) void run(() => api.post("/player/seek-by", { deltaSec }));
     }, 400);
+  };
+
+  // Écrans vers lesquels transférer la lecture : chargés à l'ouverture de la liste (un écran peut apparaître à tout moment).
+  const [players, setPlayers] = useState<PlayerTarget[] | null>(null);
+  const loadPlayers = () => {
+    api.get<PlayerTarget[]>("/players").then(setPlayers).catch(() => {});
+  };
+  const screen = (p: { deviceName?: string; client?: string }) => [p.deviceName, p.client].filter(Boolean).join(" · ") || "Écran";
+  const here = state.session;
+  const screens = players ?? (here?.deviceId ? [{ deviceId: here.deviceId, deviceName: here.deviceName, client: here.client }] : []);
+  const transfer = (deviceId: string) => {
+    if (deviceId === here?.deviceId) return;
+    void run(async () => {
+      await api.post("/player/transfer", { deviceId });
+      loadPlayers();
+    }, "Lecture transférée");
   };
 
   const seek = (event: MouseEvent<HTMLDivElement>) => {
@@ -115,6 +132,18 @@ export function NowPlayingPanel({ state, receivedAt }: { state: PublicState; rec
           <StopIcon size={14} /> Stop
         </button>
       </div>
+      <Listbox
+        label="Lire sur"
+        value={here?.deviceId ?? null}
+        options={screens.map((p) => ({ value: p.deviceId, label: screen(p) }))}
+        placeholder="Choisir un écran"
+        disabled={state.jellyfin !== "ok"}
+        onOpen={loadPlayers}
+        onChange={transfer}
+      />
+      {players !== null && players.length < 2 && (
+        <p className="hint">Aucun autre écran : ouvrir MPV Shim ou l'appli Jellyfin sur l'autre écran, connecté avec le même compte.</p>
+      )}
     </section>
   );
 }

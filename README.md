@@ -9,7 +9,8 @@ Remplace le script `the-office-random.fish` (et `auth.py`).
   - épisode en cours, sauts ±5 / ±15 s, épisode précédent / suivant, pause, barre de progression ;
   - volume, mute, piste audio, sous-titres, [compresseur audio](#compresseur-audio) contre les pics de volume ;
   - file des prochains épisodes, liste de tous les épisodes (lire maintenant ou ensuite), historique avec l'heure ;
-  - mode aléatoire ou dans l'ordre, choix de la série, mode auto.
+  - mode aléatoire ou dans l'ordre, choix de la série, mode auto ;
+  - [changement d'écran](#changer-décran) : la lecture passe d'un PC à une télé, en reprenant où elle en était.
 - **Icône d'état** près de l'horloge (lecture, pause, problème, arrêté), avec un menu de commandes.
 - **QR code** pour ouvrir l'interface sur le téléphone : affiché en grand à l'ouverture de la page sur le PC, à chaque ouverture de session, et dans le journal du service.
 - **Assistant de configuration** pour un PC neuf : découverte du serveur Jellyfin sur le réseau, connexion, détection de MPV Shim, choix de la série.
@@ -233,6 +234,19 @@ Comportement :
 - Changer de série conserve l'historique et la file de chaque série.
 - **Reprise.** L'application garde la position de l'épisode (ou du film) qu'elle a lancé, une par série, dans `state.json`. Si la lecture s'interrompt (MPV Shim fermé, PC éteint, **Stop** puis mode auto réactivé) ou si tu changes de série puis reviens, l'épisode repart **30 s avant** l'endroit de l'arrêt, au lieu de passer au suivant. **Passer**, **Précédent** et **Lire maintenant** abandonnent l'épisode interrompu. Un épisode presque fini (moins de `Changer à` secondes) ou au générique n'est pas repris. Un contenu lancé à la main n'est pas suivi : Jellyfin gère sa propre reprise.
 
+### Changer d'écran
+
+**Lire sur…** (sous la carte « En cours ») déplace la lecture vers un autre écran : un autre PC avec MPV Shim, ou une télé avec l'appli Jellyfin. L'épisode s'arrête sur l'écran actuel et reprend sur le nouveau **5 s avant** l'endroit de l'arrêt ; l'application pilote ensuite le nouvel écran (file, historique, coupe avant la fin, générique).
+
+- Une seule instance de l'application suffit : elle pilote les autres écrans à distance via Jellyfin. Rien à installer sur la télé.
+- Le nouvel écran doit être **ouvert et connecté au même utilisateur Jellyfin** ; la liste est relue à chaque ouverture.
+- Sans lecture en cours, seul l'écran piloté change : la suite démarre dessus.
+- L'écran choisi est conservé (`playerDeviceId` de `config.json`) tant qu'on ne revient pas à la détection automatique (Réglages → Serveur et compte → MPV Shim). Fixé par `PLAYER_DEVICE_ID`, il ne peut pas être changé depuis l'interface.
+- Si le lancement échoue sur le nouvel écran, l'écran piloté reste l'ancien. L'ancien a déjà reçu `Stop` : la boucle y reprend l'épisode à son point de reprise.
+- Une appli de télé peut ne pas accepter toutes les commandes (volume, pistes) : l'interface grise celles que le lecteur ne déclare pas.
+- Le compresseur et la sortie audio des Réglages concernent MPV Shim **de ce PC**, pas les autres écrans.
+- Non essayé avec une vraie appli de télé : à vérifier au premier essai (`PlayNow` avec position de départ, `Stop`).
+
 ### Films déjà vus et passage du générique
 
 La liste **« Films déjà vus »** est une source comme une série : choisir **Réglages → Source → Films déjà vus**. L'application tire alors des films au hasard dans la liste, avec la même file et le même historique (un film n'est pas rejoué avant d'avoir fait le tour de la liste).
@@ -363,6 +377,8 @@ POST   /api/player/previous       épisode précédent
 POST   /api/player/volume         { volume } | { muted }
 POST   /api/player/audio          { index }
 POST   /api/player/subtitle       { index }      -1 = désactivés
+GET    /api/players               écrans vers lesquels transférer [{ deviceId, deviceName, client, current, nowPlaying? }]
+POST   /api/player/transfer       { deviceId }   Stop ici, même contenu là-bas (5 s avant), puis pilote ce lecteur
 GET    /api/audio                 { available, compressor } (available : MPV Shim est configuré sur ce PC)
 PUT    /api/audio/compressor      { enabled }    écrit mpv.conf ; effet après la relance de MPV Shim
 POST   /api/audio/restart-player  relance MPV Shim → { restarted } (false s'il ne tournait pas)

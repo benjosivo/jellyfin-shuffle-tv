@@ -43,6 +43,8 @@ class FakeJellyfin implements JellyfinApi {
   /** Position de départ demandée à chaque `play`, dans l'ordre. */
   startTicks: number[] = [];
   playing?: { item: JfItem; position: number; paused: boolean };
+  /** Session qui joue `playing` (le dernier `play` la désigne). */
+  playingOn = "sess-mpv";
   reachable = true;
   failPlay = false;
   items = episodes(30);
@@ -50,20 +52,28 @@ class FakeJellyfin implements JellyfinApi {
   outros: Record<string, JfMediaSegment[]> = {};
   extraSessions: JfSession[] = [];
 
-  session(): JfSession {
+  /** Lecture en cours, vue depuis la session `id` (vide si elle ne joue pas). */
+  private withPlayback(base: JfSession): JfSession {
+    const playing = this.playingOn === base.Id ? this.playing : undefined;
     return {
+      ...base,
+      NowPlayingItem: playing?.item,
+      PlayState: playing
+        ? { PositionTicks: playing.position, IsPaused: playing.paused, VolumeLevel: 80, CanSeek: true }
+        : {},
+    };
+  }
+
+  session(): JfSession {
+    return this.withPlayback({
       Id: "sess-mpv",
       UserName: "Salon",
       Client: "Jellyfin MPV Shim",
       DeviceName: "cachyos",
       DeviceId: "mpv-device",
       SupportsRemoteControl: true,
-      NowPlayingItem: this.playing?.item,
-      PlayState: this.playing
-        ? { PositionTicks: this.playing.position, IsPaused: this.playing.paused, VolumeLevel: 80, CanSeek: true }
-        : {},
       Capabilities: { SupportedCommands: ["SetVolume", "SetAudioStreamIndex", "SetSubtitleStreamIndex"] },
-    };
+    });
   }
 
   async getSessions() {
@@ -71,7 +81,7 @@ class FakeJellyfin implements JellyfinApi {
     return [
       // La session du token de l'application elle-même : ne doit jamais être prise pour MPV Shim.
       { Id: "sess-self", UserName: "Salon", Client: "CachyOS Office Auto", DeviceId: "self", SupportsRemoteControl: true },
-      ...this.extraSessions,
+      ...this.extraSessions.map((s) => this.withPlayback(s)),
       this.session(),
     ] as JfSession[];
   }
@@ -79,6 +89,7 @@ class FakeJellyfin implements JellyfinApi {
     this.calls.push(`play:${sessionId}:${itemId}`);
     this.startTicks.push(startPositionTicks);
     if (this.failPlay) throw new JellyfinError("http", "boom", 500);
+    this.playingOn = sessionId;
     const item =
       this.items.find((i) => i.Id === itemId) ??
       this.movies.find((i) => i.Id === itemId) ?? { Id: itemId, Name: itemId, RunTimeTicks: 1300 * SEC };
@@ -114,8 +125,11 @@ let fake: FakeJellyfin;
 let store: Store;
 let loop: PlayerLoop;
 let dir: string;
+/** Lecteur fixé par DeviceId (comme `playerDeviceId` dans la configuration), ou détection automatique. */
+let pinnedDevice: string | undefined;
 
 async function setup(opts: { legacy?: string[] } = {}) {
+  pinnedDevice = undefined;
   dir = await fs.mkdtemp(path.join(os.tmpdir(), "loop-test-"));
   if (opts.legacy) await fs.writeFile(path.join(dir, "history"), opts.legacy.join("\n") + "\n");
   clock = 1_000_000;
@@ -125,9 +139,12 @@ async function setup(opts: { legacy?: string[] } = {}) {
     api: fake,
     store,
     library: new Library(fake, () => clock),
-    match: () => ({ userName: "Salon", ownDeviceId: "self", pattern: /mpv/i }),
+    match: () => ({ userName: "Salon", ownDeviceId: "self", pattern: /mpv/i, deviceId: pinnedDevice }),
     isConfigured: async () => true,
     defaultSeriesName: () => "The Office",
+    selectPlayer: async (deviceId) => {
+      pinnedDevice = deviceId;
+    },
     now: () => clock,
     sleep: async (ms) => {
       clock += ms;
@@ -636,6 +653,98 @@ describe("contrôles avancés", () => {
     expect(list.find((e) => e.playing)?.id).toBe(fake.playing!.item.Id);
     expect(list.find((e) => e.id === "ep30")?.queued).toBe(true);
     expect(loop.snapshot().queue[0]!.id).toBe("ep30");
+  });
+});
+
+describe("changement d'écran", () => {
+  const TV = {
+    Id: "sess-tv",
+    UserName: "Salon",
+    Client: "Jellyfin Android TV",
+    DeviceName: "Salon TV",
+    DeviceId: "tv-device",
+    SupportsRemoteControl: true,
+  } as JfSession;
+
+  beforeEach(async () => {
+    await setup();
+    fake.extraSessions = [TV];
+  });
+
+  it("liste les écrans pilotables du même utilisateur, avec l'écran actuel", async () => {
+    fake.extraSessions = [
+      TV,
+      { Id: "sess-other", UserName: "Autre", DeviceId: "other", SupportsRemoteControl: true },
+      { Id: "sess-web", UserName: "Salon", DeviceId: "web", SupportsRemoteControl: false },
+    ] as JfSession[];
+    await loop.tick();
+    const players = await loop.players();
+    expect(players.map((p) => [p.deviceId, p.current])).toEqual([
+      ["tv-device", false],
+      ["mpv-device", true],
+    ]);
+  });
+
+  it("Stop sur l'ancien écran, même épisode 5 s avant sur le nouveau, sans tirer d'épisode", async () => {
+    await startFirst();
+    const id = fake.playing!.item.Id;
+    const queued = loop.snapshot().queue.map((e) => e.id);
+    fake.playing!.position = 600 * SEC;
+    await loop.tick();
+    fake.calls = [];
+    fake.startTicks = [];
+
+    await loop.transfer("tv-device");
+    expect(fake.calls).toEqual(["playstate:sess-mpv:Stop", `play:sess-tv:${id}`]);
+    expect(fake.startTicks).toEqual([595 * SEC]);
+    expect(pinnedDevice).toBe("tv-device");
+
+    advance(SETTLE_MS);
+    fake.calls = [];
+    await loop.tick();
+    expect(fake.calls).toEqual([]); // la boucle ne relance rien
+    const state = loop.snapshot();
+    expect(state.session?.id).toBe("sess-tv");
+    expect(state.nowPlaying?.id).toBe(id);
+    expect(state.nowPlaying?.managed).toBe(true);
+    expect(state.queue.map((e) => e.id)).toEqual(queued);
+  });
+
+  it("sans lecture en cours : seul le lecteur change, la boucle lance la suite sur le nouvel écran", async () => {
+    await loop.tick();
+    fake.calls = [];
+    await loop.transfer("tv-device");
+    expect(fake.calls).toEqual([]);
+    expect(pinnedDevice).toBe("tv-device");
+    expect(loop.snapshot().session?.id).toBe("sess-tv");
+
+    advance(IDLE_GRACE_MS);
+    await loop.tick();
+    expect(plays()).toEqual([`play:sess-tv:${fake.playing!.item.Id}`]);
+  });
+
+  it("écran déjà piloté : rien à faire", async () => {
+    await startFirst();
+    fake.calls = [];
+    await loop.transfer("mpv-device");
+    expect(fake.calls).toEqual([]);
+    expect(pinnedDevice).toBeUndefined();
+  });
+
+  it("écran inconnu : refusé sans toucher à la lecture", async () => {
+    await startFirst();
+    fake.calls = [];
+    await expect(loop.transfer("nope")).rejects.toMatchObject({ status: 404 });
+    expect(fake.calls).toEqual([]);
+    expect(pinnedDevice).toBeUndefined();
+  });
+
+  it("si le lancement sur le nouvel écran échoue, l'ancien lecteur reste le lecteur piloté", async () => {
+    await startFirst();
+    fake.failPlay = true;
+    await expect(loop.transfer("tv-device")).rejects.toBeInstanceOf(JellyfinError);
+    expect(pinnedDevice).toBeUndefined();
+    expect(loop.snapshot().session?.id).toBe("sess-mpv");
   });
 });
 

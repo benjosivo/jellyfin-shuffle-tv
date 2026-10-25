@@ -148,6 +148,16 @@ export interface LogLine {
   message: string;
 }
 
+/** Écran vers lequel la lecture peut être transférée (session Jellyfin pilotable du même utilisateur). */
+export interface PlayerTarget {
+  deviceId: string;
+  deviceName?: string;
+  client?: string;
+  /** Écran actuellement piloté par l'application. */
+  current: boolean;
+  nowPlaying?: string;
+}
+
 export interface PlayerCandidate {
   deviceId?: string;
   client?: string;

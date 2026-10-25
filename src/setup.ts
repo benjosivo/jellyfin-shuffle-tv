@@ -171,12 +171,17 @@ export class Setup {
     await this.config.clearCredentials();
   }
 
-  /** Choix manuel du lecteur (DeviceId) ; `null` revient à la détection automatique. */
-  async choosePlayer(deviceId: string | null): Promise<void> {
+  /** Enregistre le lecteur (DeviceId) sans toucher à la connexion ; `undefined` = détection automatique. */
+  async selectPlayer(deviceId: string | undefined): Promise<void> {
     if (this.config.envOverrides.includes("PLAYER_DEVICE_ID")) {
       throw new HttpError(409, "Le lecteur est fixé par la variable PLAYER_DEVICE_ID.");
     }
-    await this.config.update({ playerDeviceId: deviceId ?? undefined });
+    await this.config.update({ playerDeviceId: deviceId });
+  }
+
+  /** Choix manuel du lecteur (DeviceId) ; `null` revient à la détection automatique. */
+  async choosePlayer(deviceId: string | null): Promise<void> {
+    await this.selectPlayer(deviceId ?? undefined);
     this.loop.resetConnection();
     log.info(deviceId ? `Lecteur choisi manuellement : ${deviceId}.` : "Lecteur : détection automatique.");
   }

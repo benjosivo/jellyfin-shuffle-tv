@@ -98,6 +98,15 @@ export function createApi({ loop, library, client, config, setup, sleepGuard }: 
     await loop.seekBy(delta);
     res.status(204).end();
   });
+  api.get("/players", async (_req, res) => {
+    res.json(await loop.players());
+  });
+  api.post("/player/transfer", async (req, res) => {
+    const deviceId = req.body?.deviceId;
+    if (typeof deviceId !== "string" || deviceId === "") throw new HttpError(400, "deviceId requis.");
+    await loop.transfer(deviceId);
+    res.status(204).end();
+  });
   api.post("/player/previous", async (_req, res) => {
     res.json({ episodeId: await loop.previous() });
   });

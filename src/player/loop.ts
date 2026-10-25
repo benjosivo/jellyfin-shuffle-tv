@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { HttpError } from "../errors.js";
 import { JellyfinError, type JellyfinApi } from "../jellyfin/client.js";
-import { findPlayerSession, type PlayerMatchConfig } from "../jellyfin/session.js";
+import { controllableSessions, findPlayerSession, type PlayerMatchConfig } from "../jellyfin/session.js";
 import { supportedCommands, TICKS_PER_SECOND, type JfItem, type JfSession } from "../jellyfin/types.js";
 import { log as defaultLog } from "../log.js";
 import {
@@ -10,6 +10,7 @@ import {
   type EpisodeListItem,
   type JellyfinStatus,
   type MovieSummary,
+  type PlayerTarget,
   type PlayOrder,
   type PublicState,
   type ResumePoint,
@@ -48,6 +49,8 @@ export const STOP_DELAY_MS = 2000;
 
 /** Recul à la reprise d'un épisode interrompu (le temps de se remettre dans l'histoire). */
 export const RESUME_REWIND_SEC = 30;
+/** Recul lors d'un transfert vers un autre écran (le temps que le nouveau lecteur démarre). */
+export const TRANSFER_REWIND_SEC = 5;
 /** Écart de position minimal entre deux écritures de la reprise dans state.json. */
 const RESUME_SAVE_STEP_SEC = 15;
 
@@ -70,6 +73,8 @@ export interface LoopDeps {
   match: () => PlayerMatchConfig;
   isConfigured: () => Promise<boolean>;
   defaultSeriesName: () => string;
+  /** Enregistre le lecteur piloté (DeviceId) ; `undefined` = détection automatique. */
+  selectPlayer: (deviceId: string | undefined) => Promise<void>;
   now?: () => number;
   sleep?: (ms: number) => Promise<void>;
   log?: Logger;
@@ -561,6 +566,84 @@ export class PlayerLoop extends EventEmitter {
   /** -1 = sous-titres désactivés. */
   setSubtitleTrack(index: number): Promise<void> {
     return this.action((s) => this.api.command(s.Id, "SetSubtitleStreamIndex", { Index: String(index) }));
+  }
+
+  // --- Changement d'écran -------------------------------------------------------
+
+  /** Sessions vers lesquelles transférer : pilotables, du même utilisateur, hors la nôtre. */
+  private targets(sessions: JfSession[]): (JfSession & { DeviceId: string })[] {
+    const { ownDeviceId, userName } = this.deps.match();
+    return controllableSessions(sessions, ownDeviceId).filter(
+      (s): s is JfSession & { DeviceId: string } =>
+        Boolean(s.DeviceId) && (!userName || (s.UserName ?? "").toLowerCase() === userName.toLowerCase()),
+    );
+  }
+
+  private requireJellyfin(): void {
+    if (!this.configured) throw new HttpError(409, "Application pas encore configurée.");
+    if (this.jellyfin !== "ok") throw new HttpError(503, this.jellyfinError ?? "Jellyfin injoignable.");
+  }
+
+  /** Écrans disponibles pour « Lire sur… ». */
+  async players(): Promise<PlayerTarget[]> {
+    this.requireJellyfin();
+    return this.targets(await this.api.getSessions()).map((s) => ({
+      deviceId: s.DeviceId,
+      deviceName: s.DeviceName,
+      client: s.Client,
+      current: s.DeviceId === this.session?.DeviceId,
+      nowPlaying: s.NowPlayingItem?.Name,
+    }));
+  }
+
+  /**
+   * Déplace la lecture vers un autre écran : Stop sur l'ancien, même contenu sur le nouveau, quelques
+   * secondes avant l'endroit de l'arrêt. L'application pilote ensuite le nouvel écran. Rien ne joue :
+   * seul le lecteur change.
+   */
+  transfer(deviceId: string): Promise<void> {
+    return this.exclusive(async () => {
+      this.requireJellyfin();
+      const target = this.targets(await this.api.getSessions()).find((s) => s.DeviceId === deviceId);
+      if (!target) throw new HttpError(404, "Écran introuvable : l'appli doit être ouverte et connectée au même compte.");
+      const from = this.session;
+      if (from?.DeviceId === deviceId) return;
+
+      // Avant tout effet sur les lecteurs : refusé si le lecteur est fixé par variable d'environnement.
+      const previous = this.deps.match().deviceId;
+      await this.deps.selectPlayer(deviceId);
+
+      const item = from?.NowPlayingItem;
+      if (from && item) {
+        const playState = from.PlayState ?? {};
+        let position = playState.PositionTicks ?? 0;
+        // Le relevé date de quelques secondes : on tient compte du temps écoulé depuis.
+        if (!playState.IsPaused) position += Math.max(0, this.now() - this.sampledAt) * (TICKS_PER_SECOND / 1000);
+        const startTicks = Math.max(0, Math.round(position - TRANSFER_REWIND_SEC * TICKS_PER_SECOND));
+        try {
+          await this.api.playstate(from.Id, "Stop");
+        } catch (err) {
+          this.log.warn(`Stop refusé : ${(err as Error).message}`);
+        }
+        await this.sleep(STOP_DELAY_MS);
+        try {
+          await this.api.play(target.Id, item.Id, startTicks);
+        } catch (err) {
+          await this.deps.selectPlayer(previous);
+          this.log.error(`Transfert impossible : ${(err as Error).message}`);
+          throw err;
+        }
+        const now = this.now();
+        if (item.Id === this.store.state.lastStarted?.id) this.pending = { id: item.Id, since: now };
+        this.ignoreUntil = now + SETTLE_MS;
+        this.idleSince = undefined;
+        this.foreignId = undefined;
+      }
+
+      this.session = target;
+      this.log.info(`Lecture transférée vers ${target.DeviceName ?? target.Client ?? deviceId}.`);
+      this.refreshSoon();
+    });
   }
 
   setAutoMode(enabled: boolean): Promise<void> {
