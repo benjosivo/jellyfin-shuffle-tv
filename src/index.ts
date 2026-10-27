@@ -51,9 +51,11 @@ async function main(): Promise<void> {
 
   // Installation d'un nouvel écran de lecture : `irm <url>/lecteur.ps1 | iex` ou `curl -fsSL <url>/lecteur.sh | bash`.
   for (const kind of ["ps1", "sh"] as const) {
-    app.get(`/lecteur.${kind}`, (_req, res) => {
+    app.get(`/lecteur.${kind}`, (req, res) => {
       try {
-        res.set("Content-Type", "text/plain; charset=utf-8").send(playerScript(kind));
+        // L'adresse par laquelle le nouvel écran a joint l'instance : il saura la rejoindre.
+        const serverUrl = `${req.protocol}://${req.get("host") ?? `localhost:${serverConfig.port}`}/`;
+        res.set("Content-Type", "text/plain; charset=utf-8").send(playerScript(kind, undefined, serverUrl));
       } catch (err) {
         log.error(`Script lecteur.${kind} indisponible : ${(err as Error).message}`);
         res.status(404).type("text/plain").send("Script introuvable.\n");

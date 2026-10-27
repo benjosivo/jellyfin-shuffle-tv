@@ -44,8 +44,9 @@ export function createApi({ loop, library, client, config, setup, sleepGuard }: 
 
   // --- État -------------------------------------------------------------------
 
+  // `app` permet aux scripts d'installation de reconnaître une instance sur le réseau.
   api.get("/health", (_req, res) => {
-    res.json({ ok: true });
+    res.json({ ok: true, app: "jellyfin-en-boucle", version: APP_INFO.version });
   });
 
   api.get("/state", (_req, res) => {

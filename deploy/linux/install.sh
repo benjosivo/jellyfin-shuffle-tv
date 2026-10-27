@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Installation de « Jellyfin en boucle » sur Linux (systemd).
 #
-#   deploy/linux/install.sh                 installe tout sans poser de question (sudo est demandé si besoin)
+#   deploy/linux/install.sh                 demande « serveur ou écran », puis installe sans autre question
+#   deploy/linux/install.sh --server        installe le serveur (l'application) sans demander
+#   deploy/linux/install.sh --client        n'installe que l'écran (MPV Shim), piloté par un serveur existant
+#   deploy/linux/install.sh --server-url http://192.168.1.20:8787/   instance non trouvée automatiquement
 #   deploy/linux/install.sh --ask           demande confirmation à chaque étape
 #   deploy/linux/install.sh --no-mpv-shim --no-open-ui --no-tray --no-auto-update
 #
-# Étapes : Node.js, Jellyfin MPV Shim, build, service systemd utilisateur, mise à jour automatique,
+# Serveur ou écran : une instance déjà présente sur le réseau fait proposer « écran ».
+# Étapes du serveur : Node.js, Jellyfin MPV Shim, build, service systemd utilisateur, mise à jour automatique,
 # pare-feu, ouverture de la page QR code au login, icône d'état, repérage de l'ancien script fish.
 # Tout ce qui est ajouté est noté pour que deploy/linux/uninstall.sh le retire proprement.
 # Peut être relancé autant de fois que voulu.
@@ -20,15 +24,23 @@ INSTALL_MPV_SHIM=1
 OPEN_UI=1
 TRAY=1
 AUTO_UPDATE=1
-for arg in "$@"; do
+ROLE=""
+SERVER_URL=""
+while [[ $# -gt 0 ]]; do
+  arg="$1"
+  shift
   case "$arg" in
+    --server) ROLE=server ;;
+    --client) ROLE=client ;;
+    --server-url) [[ $# -gt 0 ]] || { echo "--server-url : adresse manquante" >&2; exit 2; }; SERVER_URL="$1"; shift ;;
+    --server-url=*) SERVER_URL="${arg#*=}" ;;
     --ask) ASSUME_YES=0 ;;
     -y|--yes) ASSUME_YES=1 ;;
     --no-mpv-shim) INSTALL_MPV_SHIM=0 ;;
     --no-open-ui) OPEN_UI=0 ;;
     --no-tray) TRAY=0 ;;
     --no-auto-update) AUTO_UPDATE=0 ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,16p' "$0"; exit 0 ;;
     *) echo "Option inconnue : $arg" >&2; exit 2 ;;
   esac
 done
@@ -41,6 +53,74 @@ ask() {
 }
 
 [[ $EUID -eq 0 ]] && die "Lancer ce script avec l'utilisateur de la session (sans sudo) : il demandera sudo si besoin."
+
+# --- 0. Serveur ou écran ? ------------------------------------------------------------------
+
+# Une seule instance (le serveur) pilote tous les écrans via Jellyfin ; un écran n'a besoin que de
+# MPV Shim. Ce PC est déjà serveur si une installation précédente l'a noté ou si l'application y répond.
+step "Serveur ou écran ?"
+already_server=0
+if manifest_has "port $PORT" || { have curl && curl -fsS -m 2 "http://127.0.0.1:$PORT/api/health" 2>/dev/null | is_app_health; }; then
+  already_server=1
+fi
+if [[ -z "$SERVER_URL" && $already_server -eq 1 ]]; then
+  SERVER_URL="http://localhost:$PORT/"
+elif [[ -z "$SERVER_URL" && "$ROLE" != server ]]; then
+  echo "Recherche d'une instance de l'application sur le réseau (port $PORT)…"
+  found="$(find_app_servers "$PORT")"
+  if [[ -n "$found" ]]; then
+    while IFS= read -r url; do ok "Instance trouvée : $url"; done <<<"$found"
+    SERVER_URL="$(head -n 1 <<<"$found")"
+  else
+    ok "Aucune instance trouvée (autre port ou autre réseau : --server-url <adresse>)."
+  fi
+fi
+
+if [[ -z "$ROLE" ]]; then
+  default=1
+  reason="aucune instance sur le réseau, ce PC sera le serveur"
+  if [[ $already_server -eq 1 ]]; then
+    reason="ce PC est déjà le serveur : réinstallation ou mise à jour"
+  elif [[ -n "$SERVER_URL" ]]; then
+    default=2
+    reason="un serveur existe déjà ($SERVER_URL), ce PC sera un écran"
+  fi
+  echo "Que faut-il installer sur ce PC ?"
+  echo "  1) Serveur : l'application qui pilote la lecture (une seule sur le réseau)"
+  echo "  2) Écran   : seulement Jellyfin MPV Shim, piloté par le serveur"
+  echo "Conseillé : $default ($reason)."
+  if [[ -t 0 ]]; then
+    while [[ -z "$ROLE" ]]; do
+      read -r -p "Choix [$default] : " choice || choice=""
+      case "${choice:-$default}" in
+        1) ROLE=server ;;
+        2) ROLE=client ;;
+        *) warn "Répondre 1 ou 2." ;;
+      esac
+    done
+    # Deux serveurs piloteraient les mêmes écrans en même temps.
+    if [[ $ROLE == server && $already_server -eq 0 && -n "$SERVER_URL" ]]; then
+      warn "Un serveur tourne déjà ($SERVER_URL) : un second piloterait les mêmes écrans en même temps."
+      read -r -p "Installer quand même un second serveur ? [o/N] " answer || answer=""
+      [[ "$answer" =~ ^[oOyY] ]] || die "Installation annulée : relancer et choisir 2 (écran)."
+    fi
+  else
+    [[ $default -eq 1 ]] && ROLE=server || ROLE=client
+    ok "Pas de terminal interactif : choix $default."
+  fi
+fi
+
+if [[ $ROLE == client ]]; then
+  if [[ $already_server -eq 1 ]]; then
+    warn "Ce PC est déjà serveur : l'application reste installée. Pour ne garder que l'écran : deploy/linux/uninstall.sh, puis relancer avec --client."
+  fi
+  # Même installation que la commande de Réglages → Ajouter un écran (/lecteur.sh), consignes comprises.
+  # shellcheck source=lecteur.sh
+  source "$APP_DIR/deploy/linux/lecteur.sh"
+  exit 0
+fi
+ok "Installation du serveur."
+
 have systemctl || die "systemd est nécessaire (systemctl introuvable)."
 mkdir -p "$CONFIG_DIR"
 manifest_add "port $PORT"

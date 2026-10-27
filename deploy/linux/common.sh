@@ -36,3 +36,34 @@ pkg_remove() {
     *) return 1 ;;
   esac
 }
+
+# --- Instance déjà installée sur le réseau ---------------------------------------------------
+
+# Adresses IPv4 de ce PC sur le réseau local (ni boucle locale, ni lien local 169.254).
+local_ipv4s() {
+  if have ip; then
+    ip -4 -o addr show scope global 2>/dev/null | awk '{ split($4, a, "/"); print a[1] }'
+  elif have hostname; then
+    hostname -I 2>/dev/null | tr ' ' '\n'
+  fi | grep -E '^[0-9]+(\.[0-9]+){3}$' | grep -vE '^(127|169\.254)\.' || true
+}
+
+# Réponse de /api/health d'une instance de l'application (voir src/api/routes.ts), lue sur stdin.
+is_app_health() { grep -q '"app":"jellyfin-en-boucle"'; }
+export -f is_app_health
+
+# Instances de l'application sur le réseau local : GET /api/health sur le port $1 de chaque adresse
+# du /24 de ce PC (254 au plus par interface), 64 à la fois. Affiche une URL par instance trouvée.
+find_app_servers() {
+  local port="$1" own
+  have curl || return 0
+  own="$(local_ipv4s)"
+  [[ -n "$own" ]] || return 0
+  local prefix i
+  for prefix in $(sed -E 's/\.[0-9]+$//' <<<"$own" | sort -u); do
+    for ((i = 1; i < 255; i++)); do echo "$prefix.$i"; done
+  done | grep -vxF -f <(printf '%s\n' "$own") |
+    PORT="$port" xargs -P 64 -n 1 bash -c \
+      'curl -fsS -m 1 "http://$1:$PORT/api/health" 2>/dev/null | is_app_health && echo "http://$1:$PORT/"' _ |
+    sort -t . -k 4 -n || true
+}

@@ -4,7 +4,9 @@
   Installation de « Jellyfin en boucle » sous Windows.
 
 .DESCRIPTION
-  Node.js, Jellyfin MPV Shim (installation silencieuse), build, démarrage automatique au login
+  Demande d'abord « serveur ou écran » : une instance déjà présente sur le réseau fait proposer
+  « écran » (Jellyfin MPV Shim seul, sans droits administrateur, piloté par cette instance).
+  Serveur : Node.js, Jellyfin MPV Shim (installation silencieuse), build, démarrage automatique au login
   (tâche planifiée, sans fenêtre), règle de pare-feu pour le téléphone, page QR code au login.
   Tout ce qui est ajouté est noté pour que uninstall.ps1 le retire proprement.
   Peut être relancé autant de fois que voulu.
@@ -14,8 +16,14 @@
 
 .PARAMETER Port
   Port de l'interface web (8787 par défaut).
+.PARAMETER Server
+  Installer le serveur (l'application) sans demander.
+.PARAMETER Client
+  N'installer que l'écran (Jellyfin MPV Shim), piloté par un serveur existant.
+.PARAMETER ServerUrl
+  Adresse d'une instance que la recherche ne trouve pas (autre port, autre réseau), par ex. http://192.168.1.20:8787/.
 .PARAMETER Yes
-  Ne poser aucune question (sauf le passage d'un réseau public en privé, jamais fait d'office).
+  Ne poser aucune question (sauf « serveur ou écran » et le passage d'un réseau public en privé).
 .PARAMETER NoMpvShim
   Ne pas installer Jellyfin MPV Shim.
 .PARAMETER NoOpenUi
@@ -29,6 +37,9 @@
 #>
 param(
   [int]$Port = 8787,
+  [switch]$Server,
+  [switch]$Client,
+  [string]$ServerUrl,
   [switch]$Yes,
   [switch]$NoMpvShim,
   [switch]$NoOpenUi,
@@ -46,11 +57,80 @@ function Ask($question, [switch]$Always) {
   return ($answer -eq '' -or $answer -match '^[oOyY]')
 }
 
+# --- 0. Serveur ou écran ? -------------------------------------------------------------------
+
+# Une seule instance (le serveur) pilote tous les écrans via Jellyfin ; un écran n'a besoin que de
+# MPV Shim, sans droits administrateur. Choisi avant l'élévation, qui relance le script avec -Server.
+# Ce PC est déjà serveur si une installation précédente l'a noté ou si l'application y répond.
+if ($Server -and $Client) { throw '-Server et -Client ne vont pas ensemble.' }
+$Role = if ($Server) { 'server' } elseif ($Client) { 'client' } else { $null }
+Step 'Serveur ou écran ?'
+$alreadyServer = ((Get-ManifestValues 'port') -contains "$Port") -or (Test-AppHealth "http://127.0.0.1:$Port/")
+if (-not $ServerUrl -and $alreadyServer) {
+  $ServerUrl = "http://localhost:$Port/"
+} elseif (-not $ServerUrl -and $Role -ne 'server') {
+  Write-Host "Recherche d'une instance de l'application sur le réseau (port $Port)…"
+  $found = @(Find-AppServers $Port)
+  if ($found.Count -gt 0) {
+    foreach ($url in $found) { Ok "Instance trouvée : $url" }
+    $ServerUrl = $found[0]
+  } else {
+    Ok 'Aucune instance trouvée (autre port ou autre réseau : -ServerUrl <adresse>).'
+  }
+}
+
+if (-not $Role) {
+  $default = '1'
+  $reason = 'aucune instance sur le réseau, ce PC sera le serveur'
+  if ($alreadyServer) {
+    $reason = 'ce PC est déjà le serveur : réinstallation ou mise à jour'
+  } elseif ($ServerUrl) {
+    $default = '2'
+    $reason = "un serveur existe déjà ($ServerUrl), ce PC sera un écran"
+  }
+  Write-Host 'Que faut-il installer sur ce PC ?'
+  Write-Host "  1) Serveur : l'application qui pilote la lecture (une seule sur le réseau)"
+  Write-Host '  2) Écran   : seulement Jellyfin MPV Shim, piloté par le serveur'
+  Write-Host "Conseillé : $default ($reason)."
+  # Toujours demandé, même avec -Yes : c'est le seul vrai choix de l'installation.
+  if ([Environment]::UserInteractive -and -not [Console]::IsInputRedirected) {
+    while (-not $Role) {
+      $choice = Read-Host "Choix [$default]"
+      if (-not $choice) { $choice = $default }
+      switch ($choice) {
+        '1' { $Role = 'server' }
+        '2' { $Role = 'client' }
+        default { Warn 'Répondre 1 ou 2.' }
+      }
+    }
+    # Deux serveurs piloteraient les mêmes écrans en même temps.
+    if ($Role -eq 'server' -and -not $alreadyServer -and $ServerUrl) {
+      Warn "Un serveur tourne déjà ($ServerUrl) : un second piloterait les mêmes écrans en même temps."
+      $answer = Read-Host 'Installer quand même un second serveur ? [o/N]'
+      if ($answer -notmatch '^[oOyY]') { throw 'Installation annulée : relancer et choisir 2 (écran).' }
+    }
+  } else {
+    $Role = if ($default -eq '1') { 'server' } else { 'client' }
+    Ok "Pas de terminal interactif : choix $default."
+  }
+}
+
+if ($Role -eq 'client') {
+  if ($alreadyServer) {
+    Warn "Ce PC est déjà serveur : l'application reste installée. Pour ne garder que l'écran : deploy\windows\uninstall.ps1, puis relancer avec -Client."
+  }
+  # Même installation que la commande de Réglages → Ajouter un écran (/lecteur.ps1), consignes comprises.
+  . (Join-Path $PSScriptRoot 'lecteur.ps1')
+  exit 0
+}
+Ok 'Installation du serveur.'
+
 # --- Élévation (pare-feu et tâche planifiée au login) ---------------------------------
 
 if (-not (Test-Admin)) {
   Write-Host "Droits administrateur nécessaires (pare-feu, tâche planifiée) : confirmation demandée par Windows."
-  $argsList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Port', $Port)
+  # -Server : le choix est déjà fait, la fenêtre administrateur ne le redemande pas.
+  $argsList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Port', $Port, '-Server')
   if ($Yes) { $argsList += '-Yes' }
   if ($NoMpvShim) { $argsList += '-NoMpvShim' }
   if ($NoOpenUi) { $argsList += '-NoOpenUi' }

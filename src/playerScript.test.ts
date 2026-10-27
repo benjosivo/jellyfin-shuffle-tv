@@ -18,6 +18,18 @@ describe("playerScript", () => {
     expect(script).not.toContain("\r");
   });
 
+  it("ajoute l'adresse de l'instance en tête, entre apostrophes", () => {
+    expect(playerScript("sh", undefined, "http://192.168.1.20:8787/")).toMatch(/^SERVER_URL='http:\/\/192\.168\.1\.20:8787\/'\n/);
+    expect(playerScript("ps1", undefined, "http://192.168.1.20:8787/")).toMatch(/^& \{\n\$ServerUrl = 'http:\/\/192\.168\.1\.20:8787\/'\n/);
+    expect(playerScript("sh", undefined, "http://a'b/")).toContain("SERVER_URL='http://a'\\''b/'\n");
+    expect(playerScript("ps1", undefined, "http://a'b/")).toContain("$ServerUrl = 'http://a''b/'\n");
+  });
+
+  it("n'ajoute rien sans adresse d'instance", () => {
+    expect(playerScript("sh")).not.toContain("SERVER_URL=");
+    expect(playerScript("ps1")).not.toContain("$ServerUrl =");
+  });
+
   it("échoue clairement sans dossier d'application", () => {
     expect(() => playerScript("sh", null)).toThrow("Dossier de l'application introuvable.");
   });
