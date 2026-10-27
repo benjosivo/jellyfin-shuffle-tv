@@ -85,6 +85,50 @@ function Stop-Tray {
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 
+# --- Instance déjà installée sur le réseau ---------------------------------------------------
+
+# Réponse de /api/health d'une instance de l'application (voir src/api/routes.ts).
+function Test-AppHealthText([string]$text) { return [bool]($text -match '"app"\s*:\s*"jellyfin-en-boucle"') }
+
+function Test-AppHealth([string]$url) {
+  try {
+    $response = Invoke-WebRequest "$($url.TrimEnd('/'))/api/health" -UseBasicParsing -TimeoutSec 2
+    return (Test-AppHealthText $response.Content)
+  } catch {
+    return $false
+  }
+}
+
+# Instances de l'application sur le réseau local : GET /api/health sur le port donné de chaque adresse
+# du /24 de ce PC (254 au plus par interface), toutes en parallèle. Renvoie les URL trouvées.
+function Find-AppServers([int]$port) {
+  $own = @(Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+    Where-Object { $_.IPAddress -notmatch '^(127|169\.254)\.' } | ForEach-Object { $_.IPAddress })
+  if (-not $own) { return @() }
+  Add-Type -AssemblyName System.Net.Http
+  $client = New-Object System.Net.Http.HttpClient
+  $client.Timeout = [TimeSpan]::FromMilliseconds(1500)
+  $probes = @{}
+  try {
+    foreach ($prefix in ($own | ForEach-Object { $_ -replace '\.\d+$', '' } | Sort-Object -Unique)) {
+      foreach ($i in 1..254) {
+        $ip = "$prefix.$i"
+        if ($own -contains $ip) { continue }
+        $url = "http://${ip}:$port/"
+        $probes[$url] = $client.GetStringAsync("${url}api/health")
+      }
+    }
+    # WaitAll lève une exception dès qu'une sonde a échoué, mais seulement une fois toutes terminées.
+    try { [void][System.Threading.Tasks.Task]::WaitAll([System.Threading.Tasks.Task[]]@($probes.Values), 5000) } catch { }
+    return @($probes.Keys | Where-Object {
+        $task = $probes[$_]
+        $task.Status -eq 'RanToCompletion' -and (Test-AppHealthText $task.Result)
+      } | Sort-Object { [int]($_ -replace '^http://[\d.]+\.(\d+):.*$', '$1') })
+  } finally {
+    $client.Dispose()
+  }
+}
+
 function Refresh-Path {
   $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
   $user = [Environment]::GetEnvironmentVariable('Path', 'User')

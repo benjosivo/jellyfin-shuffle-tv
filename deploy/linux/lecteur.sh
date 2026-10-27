@@ -41,6 +41,20 @@ if ! pgrep -f "jellyfin-mpv-shim|jellyfin_mpv_shim" >/dev/null 2>&1 && [[ -n "${
   (nohup $MPV_SHIM_CMD >/dev/null 2>&1 </dev/null &)
 fi
 
+# Consignes de connexion. SERVER_URL (adresse de l'instance) est ajouté en tête par /lecteur.sh,
+# ou fixé par install.sh : le serveur Jellyfin et l'utilisateur y sont lus dans /api/setup.
 step "Suite"
-echo "Dans MPV Shim : ajouter le serveur Jellyfin avec le même utilisateur que l'application."
-echo "Cet écran apparaît ensuite dans l'application : « Lire sur… »."
+jellyfin_url="" jellyfin_user=""
+if [[ -n "${SERVER_URL:-}" ]] && have curl; then
+  setup_json="$(curl -fsS -m 5 "${SERVER_URL%/}/api/setup" 2>/dev/null || true)"
+  # Premières occurrences : les champs de premier niveau viennent avant la liste des candidats.
+  jellyfin_url="$(grep -o '"serverUrl":"[^"]*"' <<<"$setup_json" | head -n 1 | cut -d '"' -f 4 || true)"
+  jellyfin_user="$(grep -o '"userName":"[^"]*"' <<<"$setup_json" | head -n 1 | cut -d '"' -f 4 || true)"
+fi
+echo "1. Dans MPV Shim (fenêtre de connexion au premier lancement, sinon son icône près de l'horloge) :"
+if [[ -n "$jellyfin_url" && -n "$jellyfin_user" ]]; then
+  echo "   ajouter le serveur Jellyfin $jellyfin_url, utilisateur « $jellyfin_user » (et son mot de passe)."
+else
+  echo "   ajouter le même serveur Jellyfin et le même utilisateur que l'application."
+fi
+echo "2. Ouvrir l'application${SERVER_URL:+ ($SERVER_URL)}, puis « Lire sur… » : choisir cet écran."

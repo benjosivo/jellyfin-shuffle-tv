@@ -37,7 +37,60 @@ Un seul process Node (port **8787**). Le token Jellyfin reste sur le PC : le té
 
 ## Installation
 
-Prérequis : Git. Tout le reste (Node.js, Jellyfin MPV Shim) est installé automatiquement s'il manque, **sans question**. Seuls restent le mot de passe `sudo` (Linux) ou la fenêtre de confirmation administrateur (Windows), puis la connexion de MPV Shim à Jellyfin, guidée par l'interface.
+Prérequis : Git. Tout le reste (Node.js, Jellyfin MPV Shim) est installé automatiquement s'il manque. La seule question est **« serveur ou écran ? »** (voir ci-dessous). Restent ensuite le mot de passe `sudo` (Linux) ou la fenêtre de confirmation administrateur (Windows), puis la connexion de MPV Shim à Jellyfin, guidée par l'interface.
+
+### Serveur ou écran ?
+
+L'application ne tourne qu'**une fois** sur le réseau : c'est le **serveur**. Elle pilote tous les **écrans** (PC avec MPV Shim, télé avec l'appli Jellyfin) en passant par Jellyfin. Elle ne parle jamais directement aux autres PC.
+
+```
+              📱 Téléphone (navigateur, via le QR code)
+                    │                     ▲
+     commandes      │                     │  état en direct
+     HTTP :8787     ▼                     │
+          ┌──────────────────────────────────┐
+          │  SERVEUR : Jellyfin en boucle    │  un seul : un PC, ou un container
+          │  (Node :8787, garde le token)    │
+          └────────────────┬─────────────────┘
+                           │ API Jellyfin : /Sessions, PlayNow, Stop…
+                           ▼
+          ┌──────────────────────────────────┐
+          │      Serveur Jellyfin :8096      │  relaie les commandes, envoie la vidéo
+          └─────┬────────────┬────────────┬──┘
+                ▼            ▼            ▼
+          ┌──────────┐ ┌──────────┐ ┌──────────┐
+          │  ÉCRAN   │ │  ÉCRAN   │ │  ÉCRAN   │  connectés au même
+          │ MPV Shim │ │ MPV Shim │ │ appli    │  utilisateur Jellyfin
+          │ (PC 1)   │ │ (PC 2)   │ │ Jellyfin │
+          └──────────┘ └──────────┘ └──────────┘
+```
+
+Le serveur peut aussi être un écran : son propre MPV Shim est installé avec lui.
+
+La **même commande d'installation** sert aux deux cas (voir [Linux](#linux) ou [Windows](#windows)). Elle commence par chercher un serveur déjà installé sur le réseau local, en interrogeant le port 8787 de chaque machine du réseau (quelques secondes), puis demande :
+
+```
+Que faut-il installer sur ce PC ?
+  1) Serveur : l'application qui pilote la lecture (une seule sur le réseau)
+  2) Écran   : seulement Jellyfin MPV Shim, piloté par le serveur
+Conseillé : 2 (un serveur existe déjà (http://192.168.1.20:8787/), ce PC sera un écran).
+Choix [2] :
+```
+
+- **Aucun serveur trouvé** : « 1 » est proposé. **Un serveur trouvé** : « 2 » est proposé. **Ce PC est déjà le serveur** (réinstallation, mise à jour) : « 1 » est proposé. Entrée accepte la proposition.
+- Choisir « 1 » alors qu'un serveur existe déjà demande une confirmation : deux serveurs piloteraient les mêmes écrans en même temps.
+- **Écran** n'installe que Jellyfin MPV Shim (et son démarrage à l'ouverture de session) : ni Node.js, ni l'application, ni droits administrateur sous Windows. C'est la même chose que la commande de Réglages → **Ajouter un écran**.
+- Sans réponse possible (pas de terminal), la proposition est prise d'office. Pour ne pas poser la question : `--server` / `--client` (Linux), `-Server` / `-Client` (Windows).
+- Serveur non trouvé (autre port, autre réseau, container derrière un autre port) : donner son adresse avec `--server-url http://192.168.1.20:8787/` (Linux) ou `-ServerUrl http://192.168.1.20:8787/` (Windows).
+
+**Installation complète, dans l'ordre :**
+
+1. **Le serveur**, sur le PC qui reste allumé (ou dans un [container](#container-coolify-docker)) : commande d'installation, choix « 1 ». Ouvrir `http://localhost:8787` et suivre l'assistant (serveur Jellyfin, compte, série).
+2. **Chaque autre PC** : même commande, choix « 2 ». Pour une télé : installer l'appli Jellyfin, rien d'autre.
+3. **Sur chaque écran**, connecter MPV Shim (ou l'appli de la télé) au **même serveur Jellyfin et au même utilisateur** que le serveur. À la fin de l'installation d'un écran, le script affiche le serveur Jellyfin et l'utilisateur à saisir, lus sur le serveur trouvé.
+4. Sur le téléphone : **Lire sur…** et choisir l'écran (voir [Changer d'écran](#changer-décran)).
+
+La recherche du serveur et le choix sous Windows n'ont pas pu être essayés sur un vrai réseau au moment de les écrire : seule la partie Linux a été essayée, sur une seule machine.
 
 Tout ce que l'installation ajoute est noté dans `install-manifest` (dossier de configuration) : la désinstallation retire exactement ça, et rien d'autre. L'installation peut être relancée autant de fois que voulu (mise à jour, réparation) ; ce qu'elle avait installé la première fois reste « à elle ».
 
@@ -49,7 +102,7 @@ cd ~/jellyfin-shuffle-tv
 deploy/linux/install.sh
 ```
 
-Le script (à lancer sans `sudo`, il le demande au besoin) :
+Le script (à lancer sans `sudo`, il le demande au besoin) demande d'abord [« serveur ou écran ? »](#serveur-ou-écran-). Pour un écran, il n'installe que MPV Shim. Pour le serveur :
 
 1. installe Node.js ≥ 20 s'il manque ou s'il est trop ancien (paquets de la distribution ; dépôt officiel NodeSource sur Debian/Ubuntu) ;
 2. installe **Jellyfin MPV Shim** s'il manque (AUR via `paru`/`yay` sur Arch/CachyOS, sinon Flatpak, sinon `pipx`), le lance, et le fait démarrer à l'ouverture de session ;
@@ -61,7 +114,7 @@ Le script (à lancer sans `sudo`, il le demande au besoin) :
 8. affiche l'**icône d'état** près de l'horloge, et la relance à chaque session ;
 9. signale tout lancement automatique de l'ancien script fish **sans rien supprimer** : à désactiver soi-même, sinon les deux pilotent MPV Shim en même temps.
 
-Options : `--ask` (confirmer chaque étape ; propose aussi le démarrage sans session ouverte, « linger »), `--no-mpv-shim`, `--no-open-ui`, `--no-tray`, `--no-auto-update`. Port différent : `PORT=8080 deploy/linux/install.sh`.
+Options : `--server` / `--client` (sans la question « serveur ou écran »), `--server-url <adresse>` (serveur non trouvé automatiquement), `--ask` (confirmer chaque étape ; propose aussi le démarrage sans session ouverte, « linger »), `--no-mpv-shim`, `--no-open-ui`, `--no-tray`, `--no-auto-update`. Port différent : `PORT=8080 deploy/linux/install.sh`.
 
 ### Windows
 
@@ -71,7 +124,7 @@ Dans PowerShell, depuis le dossier du projet :
 powershell -ExecutionPolicy Bypass -File deploy\windows\install.ps1 -Yes
 ```
 
-Le script demande les droits administrateur (pare-feu, tâche planifiée) ; utiliser un compte qui est lui-même administrateur, pour que la tâche soit créée pour le bon utilisateur. Il :
+Le script demande d'abord [« serveur ou écran ? »](#serveur-ou-écran-), même avec `-Yes`. Pour un écran, il n'installe que MPV Shim, sans droits administrateur. Pour le serveur, il demande les droits administrateur (pare-feu, tâche planifiée) ; utiliser un compte qui est lui-même administrateur, pour que la tâche soit créée pour le bon utilisateur. Il :
 
 1. installe Node.js LTS avec `winget` s'il manque ;
 2. télécharge la dernière version de **Jellyfin MPV Shim** sur GitHub et l'installe **en silence** s'il manque (repli sur l'installeur normal si besoin), le lance, et l'ajoute au dossier Démarrage ;
@@ -83,7 +136,7 @@ Le script demande les droits administrateur (pare-feu, tâche planifiée) ; util
 8. crée le raccourci **« Jellyfin en boucle »** dans le menu Démarrer et sur le bureau ;
 9. affiche l'**icône d'état** près de l'horloge, et la relance à chaque session.
 
-Options : `-Yes` (aucune question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-NoTray`, `-NoAutoUpdate`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
+Options : `-Server` / `-Client` (sans la question « serveur ou écran »), `-ServerUrl <adresse>` (serveur non trouvé automatiquement), `-Yes` (aucune autre question), `-NoMpvShim`, `-NoOpenUi`, `-NoShortcuts`, `-NoTray`, `-NoAutoUpdate`, `-Port 8080`. Journal : `%APPDATA%\jellyfin-office\service.log`.
 
 ### Container (Coolify, Docker)
 

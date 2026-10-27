@@ -39,11 +39,13 @@ Windows (PowerShell)   irm http://<ip-serveur-coolify>:8787/lecteur.ps1 | iex
 Linux                  curl -fsSL http://<ip-serveur-coolify>:8787/lecteur.sh | bash
 ```
 
-Elle installe MPV Shim s'il manque (Windows : installeur GitHub en silencieux ; Linux : AUR, sinon Flatpak, sinon pipx), le fait démarrer à l'ouverture de session et le lance. Rien d'autre n'est installé. Il reste à ouvrir MPV Shim, y ajouter le serveur Jellyfin avec **le même utilisateur** que l'application, puis choisir l'écran dans « Lire sur… ».
+Elle installe MPV Shim s'il manque (Windows : installeur GitHub en silencieux ; Linux : AUR, sinon Flatpak, sinon pipx), le fait démarrer à l'ouverture de session et le lance. Rien d'autre n'est installé. Il reste à ouvrir MPV Shim, y ajouter le serveur Jellyfin avec **le même utilisateur** que l'application (la fin du script affiche les deux, lus sur l'instance), puis choisir l'écran dans « Lire sur… ».
+
+Sur un PC qui a déjà une copie du dépôt, `deploy/linux/install.sh` ou `deploy\windows\install.ps1` fait la même chose avec le choix « 2) Écran » (voir [Serveur ou écran ?](../README.md#serveur-ou-écran-)). Le container n'est pas trouvé automatiquement si son port publié n'est pas 8787 : ajouter alors `--server-url http://<ip-serveur-coolify>:<port>/` (Linux) ou `-ServerUrl …` (Windows).
 
 Pour une télé, installer l'appli Jellyfin et s'y connecter avec le même compte : aucune commande.
 
-Pour retirer un écran : désinstaller MPV Shim (Windows : Applications installées ; Linux : le paquet AUR, `flatpak uninstall com.github.iwalton3.jellyfin-mpv-shim` ou `pipx uninstall jellyfin-mpv-shim`), puis supprimer le raccourci du dossier Démarrage (Windows) ou `~/.config/autostart/jellyfin-mpv-shim.desktop` (Linux). N'utilise pas `deploy/*/install.*` pour un simple écran : il installe aussi une seconde instance de l'application.
+Pour retirer un écran : désinstaller MPV Shim (Windows : Applications installées ; Linux : le paquet AUR, `flatpak uninstall com.github.iwalton3.jellyfin-mpv-shim` ou `pipx uninstall jellyfin-mpv-shim`), puis supprimer le raccourci du dossier Démarrage (Windows) ou `~/.config/autostart/jellyfin-mpv-shim.desktop` (Linux). Avec `deploy/*/install.*`, choisir « 2) Écran » : « 1) Serveur » installerait une seconde instance de l'application.
 
 Ces scripts n'ont pas été lancés sur un PC neuf au moment de les écrire : seule leur syntaxe a été vérifiée.
 

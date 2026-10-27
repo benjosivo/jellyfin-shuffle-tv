@@ -31,6 +31,18 @@ if (-not (Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.Path -li
   Start-Process $shortcut.FullName
 }
 
+# Consignes de connexion. $ServerUrl (adresse de l'instance) est ajouté en tête par /lecteur.ps1,
+# ou fixé par install.ps1 : le serveur Jellyfin et l'utilisateur y sont lus dans /api/setup.
 Step 'Suite'
-Write-Host "Dans MPV Shim : ajouter le serveur Jellyfin avec le même utilisateur que l'application."
-Write-Host "Cet écran apparaît ensuite dans l'application : « Lire sur… »."
+$setup = $null
+if ($ServerUrl) {
+  try { $setup = Invoke-RestMethod "$($ServerUrl.TrimEnd('/'))/api/setup" -UseBasicParsing -TimeoutSec 5 } catch { }
+}
+Write-Host "1. Dans MPV Shim (fenêtre de connexion au premier lancement, sinon son icône près de l'horloge) :"
+if ($setup -and $setup.serverUrl -and $setup.userName) {
+  Write-Host "   ajouter le serveur Jellyfin $($setup.serverUrl), utilisateur « $($setup.userName) » (et son mot de passe)."
+} else {
+  Write-Host "   ajouter le même serveur Jellyfin et le même utilisateur que l'application."
+}
+$where = if ($ServerUrl) { " ($ServerUrl)" } else { '' }
+Write-Host "2. Ouvrir l'application$where, puis « Lire sur… » : choisir cet écran."
